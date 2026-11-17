@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Atelier</title>
+<meta name="description" content="Atelier — créer des espaces, des scènes et des vêtements en 3D, à la main et à la voix.">
+<meta name="theme-color" content="#11100E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Atelier">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<script type="importmap">
+{ "imports": { "three": "./lib/three/build/three.module.js", "three/addons/": "./lib/three/addons/" } }
+</script>
+<script src="lib/peerjs.min.js" defer></script>
+</head>
+<body>
+<video id="cam" playsinline muted autoplay></video>
+<canvas id="scene"></canvas>
+<canvas id="handsOverlay"></canvas>
+
+<!-- barre du haut -->
+<header id="top">
+  <div class="brand"><span class="logo">Atelier</span><span id="status" class="status"></span></div>
+  <div class="actions">
+    <button class="ico" id="btnUndo" aria-label="Annuler" title="Annuler"></button>
+    <button class="ico" id="btnRedo" aria-label="Rétablir" title="Rétablir"></button>
+    <button class="ico toggle" id="btnHands" aria-label="Mains" title="Créer avec les mains"></button>
+    <button class="ico toggle" id="btnVoice" aria-label="Voix" title="Commandes vocales"></button>
+    <button class="ico" id="btnLink" aria-label="Écran lié" title="Lier un écran"></button>
+    <button class="ico" id="btnShare" aria-label="Exporter" title="Exporter / partager"></button>
+    <button class="ico" id="btnMenu" aria-label="Menu" title="Menu"></button>
+  </div>
+</header>
+
+<div id="voiceBubble" class="bubble" hidden></div>
+<div id="toast" class="toast" hidden></div>
+<div id="camPip" hidden><video id="pipVideo" playsinline muted></video></div>
+
+<!-- élément sélectionné -->
+<section id="selPanel" hidden>
+  <div class="sel-head">
+    <div><div id="selName" class="sel-name"></div><div id="selDims" class="sel-dims"></div></div>
+    <button class="ico small" id="selClose" aria-label="Désélectionner"></button>
+  </div>
+  <div id="selParts" class="chips"></div>
+  <div class="sel-tools">
+    <button data-act="material"><i data-i="swatch"></i><span>Matière</span></button>
+    <button data-act="params"><i data-i="sliders"></i><span>Réglages</span></button>
+    <button data-act="rotate"><i data-i="rotate"></i><span>Pivoter</span></button>
+    <button data-act="duplicate"><i data-i="copy"></i><span>Dupliquer</span></button>
+    <button data-act="focus"><i data-i="focus"></i><span>Cadrer</span></button>
+    <button data-act="delete" class="danger"><i data-i="trash"></i><span>Supprimer</span></button>
+  </div>
+  <div id="params" class="params" hidden></div>
+</section>
+
+<!-- bibliothèque -->
+<section id="sheet">
+  <button id="sheetHandle" aria-label="Replier la bibliothèque"><span></span></button>
+  <nav id="tabs" class="tabs"></nav>
+  <div id="tray" class="tray"></div>
+</section>
+
+<!-- détail matière -->
+<div id="matDetail" class="modal-card" hidden>
+  <div class="md-swatch" id="mdSwatch"></div>
+  <div class="md-body">
+    <div class="md-cat" id="mdCat"></div>
+    <div class="md-name" id="mdName"></div>
+    <p class="md-desc" id="mdDesc"></p>
+    <div class="md-actions"><button class="btn" id="mdApply">Appliquer</button><button class="btn ghost" id="mdClose">Fermer</button></div>
+  </div>
+</div>
+
+<!-- visite -->
+<div id="walkUI" hidden>
+  <div id="joystick"><div class="knob"></div></div>
+  <button class="btn ghost" id="walkExit">Quitter la visite</button>
+  <div class="walk-hint">Joystick pour avancer · glisse ailleurs pour regarder</div>
+</div>
+
+<!-- feuilles modales -->
+<div id="modal" class="modal" hidden><div class="modal-box" role="dialog" aria-modal="true"><div id="modalContent"></div></div></div>
+
+<!-- écran d'affichage -->
+<div id="displayUI" hidden>
+  <div class="display-wait" id="displayWait">
+    <div class="logo big">Atelier</div>
+    <p>Écran d'affichage</p>
+    <div class="code" id="displayCode">····</div>
+    <p class="muted">Sur ton iPhone : Atelier → <b>Écran lié</b> → tape ce code.</p>
+  </div>
+  <div class="display-live" id="displayLive" hidden><span class="dot"></span> En direct <button class="btn ghost small" id="displayFollow">Suivre la vue de l'iPhone : oui</button></div>
+</div>
+
+<input type="file" id="fileInput" accept=".atelier,application/json" hidden>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
