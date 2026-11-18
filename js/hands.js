@@ -1,25 +1,47 @@
-// Atelier — pilotage aux mains par la caméra (MediaPipe Hand Landmarker, calcul 100 % sur l'appareil)
+// Atelier — pilotage à une seule main par la caméra (MediaPipe Hand Landmarker, calcul 100 % sur l'appareil)
+//
+// Gestes (une seule main) :
+//  • POINTER  : index tendu (les autres doigts repliés) → le curseur suit le bout de l'index, l'objet visé s'illumine
+//  • APPUYER  : geste d'appui avec l'index (on « enfonce » le doigt vers l'écran, ou on le plie et le retend)
+//               → sélectionne l'objet visé, ou clique sur le bouton visé, ou désélectionne dans le vide
+//  • ZOOMER   : comme sur un téléphone, pouce + index qui s'écartent (zoom avant) ou se rapprochent (zoom arrière)
+//  • TOURNER  : main ouverte, on balaie à gauche / à droite / en haut / en bas
+//  • DÉPLACER : poing fermé quand un objet est sélectionné → l'objet suit la main ; on rouvre la main pour le lâcher
 import * as THREE from 'three';
 
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
+const FINGERS = { index: [5, 6, 8], middle: [9, 10, 12], ring: [13, 14, 16], pinky: [17, 18, 20] };
+const LABEL = { point: '', zoom: 'Zoom', orbit: 'Rotation', grab: 'Déplacer' };
+
+const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z - b.z) * 0.6);
+function angle(a, b, c) { // angle en degrés au point b
+  const v1 = [a.x - b.x, a.y - b.y, (a.z - b.z) * 0.6], v2 = [c.x - b.x, c.y - b.y, (c.z - b.z) * 0.6];
+  const dot = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
+  const n = Math.hypot(...v1) * Math.hypot(...v2) || 1;
+  return Math.acos(Math.max(-1, Math.min(1, dot / n))) * 180 / Math.PI;
+}
 
 export class Hands {
   constructor(engine, video, overlay, ui) {
     this.engine = engine; this.video = video; this.overlay = overlay; this.ui = ui;
     this.ctx = overlay.getContext('2d');
     this.active = false; this.landmarker = null; this.mirror = true;
-    this.state = [this.newHand(), this.newHand()];
-    this.cursors = [0, 1].map(i => { const d = document.createElement('div'); d.className = 'hand-cursor'; d.dataset.i = i; document.body.appendChild(d); return d; });
-    this.lastTs = -1;
+    this.cursor = document.createElement('div'); this.cursor.className = 'hand-cursor';
+    this.cursor.innerHTML = '<span class="hc-label"></span>';
+    document.body.appendChild(this.cursor);
+    this.reset();
   }
-  newHand() { return { x: 0, y: 0, sx: 0, sy: 0, pinch: false, t0: 0, mode: null, moved: 0, off: null, planeY: 0, seen: false }; }
+  reset() {
+    this.s = { seen: false, x: 0, y: 0, hist: [], pose: null, poseCount: 0, mode: 'point', candidate: null,
+      dip: null, push: null, scaleHist: [], lastTap: 0, gapRef: null, gapHist: [], palm: null, grabOff: null, grabY: 0, lost: 0 };
+  }
 
   async load() {
     if (this.landmarker) return;
     const { FilesetResolver, HandLandmarker } = await import('../lib/mediapipe/vision_bundle.mjs');
     const files = await FilesetResolver.forVisionTasks(new URL('../lib/mediapipe/wasm', import.meta.url).href);
-    const opts = d => ({ baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: 0.55, minHandPresenceConfidence: 0.55, minTrackingConfidence: 0.5 });
+    const opts = d => ({ baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 1, minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.55 });
     try { this.landmarker = await HandLandmarker.createFromOptions(files, opts('GPU')); }
     catch { this.landmarker = await HandLandmarker.createFromOptions(files, opts('CPU')); }
   }
@@ -33,9 +55,11 @@ export class Hands {
   }
   stop() {
     this.active = false; document.body.classList.remove('hands-on');
-    this.cursors.forEach(c => c.classList.remove('on', 'pinch'));
+    this.cursor.className = 'hand-cursor';
     this.ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
-    this.state = [this.newHand(), this.newHand()];
+    this.engine.setHover?.(null);
+    this.setUiHover(null);
+    this.reset();
   }
 
   // coordonnées normalisées de la vidéo → pixels écran (vidéo en object-fit: cover)
@@ -46,117 +70,193 @@ export class Hands {
     let dw, dh, ox, oy;
     if (va > sa) { dh = H; dw = H * va; ox = (W - dw) / 2; oy = 0; } else { dw = W; dh = W / va; ox = 0; oy = (H - dh) / 2; }
     if (this.mirror) nx = 1 - nx;
-    // marge : on étire un peu pour atteindre les bords de l'écran sans sortir du champ
+    // marge : on étire un peu pour atteindre les bords de l'écran sans sortir du champ de la caméra
     const m = 0.12; nx = (nx - m) / (1 - 2 * m); ny = (ny - m) / (1 - 2 * m);
     return { x: ox + nx * dw, y: oy + ny * dh };
+  }
+
+  // lecture de la posture de la main
+  readPose(lm) {
+    const size = d3(lm[0], lm[9]) || 0.1;
+    const ext = {};
+    for (const [f, [mcp, pip, tip]] of Object.entries(FINGERS)) {
+      ext[f] = angle(lm[mcp], lm[pip], lm[tip]) > 150 && d3(lm[0], lm[tip]) > d3(lm[0], lm[pip]) * 1.05;
+    }
+    const idxAngle = angle(lm[5], lm[6], lm[8]);
+    const gap = d3(lm[4], lm[8]) / size;              // écart pouce-index
+    const others = ext.middle + ext.ring + ext.pinky;
+    let pose;
+    if (others >= 3 && ext.index) pose = 'open';
+    else if (others === 0 && !ext.index && idxAngle < 90) pose = 'fist';
+    else if (others <= 1) pose = 'point';             // index (et éventuellement pouce) en avant
+    else pose = 'other';
+    return { pose, size, gap, idxAngle };
   }
 
   tick() {
     const v = this.video;
     if (!this.landmarker || v.readyState < 2) return;
-    const ts = performance.now(); if (ts <= this.lastTs) return; this.lastTs = ts;
-    let res; try { res = this.landmarker.detectForVideo(v, ts); } catch { return; }
-    const W = this.overlay.width = window.innerWidth * devicePixelRatio, H = this.overlay.height = window.innerHeight * devicePixelRatio;
+    const now = performance.now(); if (now <= (this.lastTs || 0)) return; this.lastTs = now;
+    let res; try { res = this.landmarker.detectForVideo(v, now); } catch { return; }
+    const dpr = devicePixelRatio;
+    const W = this.overlay.width = window.innerWidth * dpr, H = this.overlay.height = window.innerHeight * dpr;
     const ctx = this.ctx; ctx.clearRect(0, 0, W, H);
-    const hands = (res.landmarks || []).slice(0, 2);
-    // ordre stable : main la plus à gauche à l'écran = 0
-    const withX = hands.map(lm => ({ lm, x: this.toScreen(lm[9].x, lm[9].y).x })).sort((a, b) => a.x - b.x);
-    for (let i = 0; i < 2; i++) {
-      const h = this.state[i], c = this.cursors[i];
-      const lm = withX[i]?.lm;
-      if (!lm) { if (h.seen) this.release(h, true); h.seen = false; c.classList.remove('on', 'pinch'); continue; }
-      // squelette lumineux
-      const P = lm.map(p => this.toScreen(p.x, p.y));
-      ctx.lineWidth = 2 * devicePixelRatio; ctx.strokeStyle = 'rgba(232,214,180,0.75)'; ctx.lineCap = 'round';
-      ctx.beginPath(); for (const [a, b] of CONNECTIONS) { ctx.moveTo(P[a].x * devicePixelRatio, P[a].y * devicePixelRatio); ctx.lineTo(P[b].x * devicePixelRatio, P[b].y * devicePixelRatio); } ctx.stroke();
-      ctx.fillStyle = 'rgba(255,244,222,0.95)';
-      for (const p of P) { ctx.beginPath(); ctx.arc(p.x * devicePixelRatio, p.y * devicePixelRatio, 2.6 * devicePixelRatio, 0, 7); ctx.fill(); }
-      // pincement pouce-index, normalisé par la taille de la main
-      const size = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y) || 0.1;
-      const pd = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / size;
-      const mid = this.toScreen((lm[4].x + lm[8].x) / 2, (lm[4].y + lm[8].y) / 2);
-      if (!h.seen) { h.x = mid.x; h.y = mid.y; h.seen = true; }
-      const px = h.x, py = h.y;
-      h.x += (mid.x - h.x) * 0.5; h.y += (mid.y - h.y) * 0.5;
-      c.classList.add('on'); c.style.transform = `translate(${h.x}px, ${h.y}px)`;
-      const pinching = h.pinch ? pd < 0.42 : pd < 0.27;
-      c.style.setProperty('--p', Math.max(0, Math.min(1, (0.6 - pd) / 0.35)).toFixed(2));
-      this.hover(c, h);
-      if (pinching && !h.pinch) this.press(h, i);
-      else if (!pinching && h.pinch) this.release(h, false);
-      else if (pinching) this.drag(h, h.x - px, h.y - py);
-      c.classList.toggle('pinch', h.pinch);
+    const lm = res.landmarks?.[0];
+    const s = this.s, c = this.cursor;
+    if (!lm) {
+      if (s.seen && ++s.lost > 6) { this.endMode(); s.seen = false; c.classList.remove('on'); this.engine.setHover?.(null); this.setUiHover(null); }
+      return;
     }
-    this.twoHands();
+    s.lost = 0;
+
+    // squelette lumineux
+    const P = lm.map(p => this.toScreen(p.x, p.y));
+    ctx.lineWidth = 2 * dpr; ctx.strokeStyle = 'rgba(232,214,180,0.7)'; ctx.lineCap = 'round';
+    ctx.beginPath(); for (const [a, b] of CONNECTIONS) { ctx.moveTo(P[a].x * dpr, P[a].y * dpr); ctx.lineTo(P[b].x * dpr, P[b].y * dpr); } ctx.stroke();
+    ctx.fillStyle = 'rgba(255,244,222,0.95)';
+    for (const p of P) { ctx.beginPath(); ctx.arc(p.x * dpr, p.y * dpr, 2.4 * dpr, 0, 7); ctx.fill(); }
+
+    const info = this.readPose(lm);
+    // la posture doit être stable quelques images avant de changer de mode (évite les à-coups)
+    if (info.pose === s.candidate) s.poseCount++; else { s.candidate = info.pose; s.poseCount = 1; }
+    const stable = s.poseCount >= 3 ? s.candidate : s.pose;
+    if (stable !== s.pose) { this.endMode(); s.pose = stable; this.beginMode(stable, info, P); }
+
+    // curseur : bout de l'index, lissage adaptatif (lent = précis, rapide = réactif)
+    const tip = P[8];
+    if (!s.seen) { s.x = tip.x; s.y = tip.y; s.seen = true; }
+    const frozen = s.mode === 'zoom' || s.dip || s.push;
+    if (!frozen) {
+      const sp = Math.hypot(tip.x - s.x, tip.y - s.y);
+      const k = Math.min(0.65, 0.18 + sp / 90);
+      s.x += (tip.x - s.x) * k; s.y += (tip.y - s.y) * k;
+    }
+    s.hist.push({ t: now, x: s.x, y: s.y }); while (s.hist.length && now - s.hist[0].t > 600) s.hist.shift();
+
+    // modes
+    if (s.pose === 'point') this.doPoint(info, now);
+    else if (s.pose === 'open') this.doOrbit(P, now);
+    else if (s.pose === 'fist') this.doGrab(P);
+
+    // affichage du curseur
+    const pos = s.pose === 'open' || s.pose === 'fist' ? P[9] : { x: s.x, y: s.y };
+    c.classList.add('on');
+    c.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+    c.dataset.mode = s.mode;
+    c.querySelector('.hc-label').textContent = LABEL[s.mode] || '';
+  }
+
+  beginMode(pose, info, P) {
+    const s = this.s;
+    s.mode = { point: 'point', open: 'orbit', fist: 'grab' }[pose] || 'idle';
+    s.gapHist = []; s.gapRef = null; s.dip = null; s.push = null; s.scaleHist = [];
+    if (pose === 'open') s.palm = { x: P[9].x, y: P[9].y };
+    if (pose === 'fist') {
+      const e = this.engine;
+      if (e.selected) {
+        s.grabY = e.selected.position.y;
+        const fp = e.floorPoint(P[9].x, P[9].y, s.grabY);
+        s.grabOff = fp ? e.selected.position.clone().sub(fp) : null;
+        s.grabMoved = false;
+      } else s.grabOff = null;
+      this.engine.setHover?.(null); this.setUiHover(null);
+    }
+  }
+  endMode() {
+    const s = this.s;
+    if (s.mode === 'grab' && s.grabOff && s.grabMoved) this.engine.commit();
+    if (s.mode === 'zoom') s.mode = 'point';
+    s.grabOff = null; s.palm = null;
+  }
+
+  // pointer, appuyer, zoomer
+  doPoint(info, now) {
+    const s = this.s, e = this.engine;
+    // --- zoom façon téléphone : l'écart pouce-index change vite alors que la main reste en place
+    s.gapHist.push({ t: now, g: info.gap }); while (s.gapHist.length && now - s.gapHist[0].t > 350) s.gapHist.shift();
+    const g0 = s.gapHist[0].g, dg = info.gap - g0;
+    if (s.mode !== 'zoom' && !s.dip && !s.push && info.idxAngle > 140 && Math.abs(dg) > 0.32 && s.gapHist.length > 3) { s.mode = 'zoom'; s.gapRef = g0; e.setHover?.(null); } // on reprend depuis le début du geste
+    if (s.mode === 'zoom') {
+      const prev = s.gapRef; s.gapRef = info.gap;
+      const f = (prev + 0.15) / (info.gap + 0.15); // écarter → on se rapproche
+      if (Math.abs(f - 1) > 0.002) { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(e.orbit.radius * f, 0.6, 120); }
+      // on sort du zoom quand l'écart ne bouge plus pendant un moment
+      if (Math.abs(info.gap - (s.zoomLastGap ?? info.gap)) > 0.03) { s.zoomLastGap = info.gap; s.zoomLastMove = now; }
+      if (now - (s.zoomLastMove ?? now) > 450) { s.mode = 'point'; s.gapHist = []; s.zoomLastGap = null; s.zoomLastMove = null; }
+      else s.zoomLastMove ??= now;
+      return;
+    }
+
+    // --- survol
+    const ui = this.uiTarget(s.x, s.y);
+    this.setUiHover(ui);
+    const hit = ui ? null : e.pick(s.x, s.y);
+    e.setHover?.(hit?.object && hit.object !== e.selected ? hit.object : null);
+    this.cursor.classList.toggle('over-ui', !!ui);
+    this.cursor.classList.toggle('over-obj', !!hit);
+
+    // --- appui n°1 : l'index se plie puis se retend
+    if (!s.dip && info.idxAngle < 128) {
+      const ref = s.hist.find(h => now - h.t < 260) || s.hist[0];
+      s.dip = { t: now, x: ref?.x ?? s.x, y: ref?.y ?? s.y };
+    }
+    if (s.dip) {
+      if (info.idxAngle > 150) { const d = s.dip; s.dip = null; if (now - d.t < 650) this.tap(d.x, d.y, now); }
+      else if (now - s.dip.t > 900) s.dip = null; // doigt resté plié : ce n'était pas un appui
+    }
+    // --- appui n°2 : on « enfonce » le doigt vers l'écran (la main grossit puis revient)
+    s.scaleHist.push({ t: now, v: info.size }); while (s.scaleHist.length && now - s.scaleHist[0].t > 700) s.scaleHist.shift();
+    if (!s.dip && s.scaleHist.length > 5) {
+      const base = Math.min(...s.scaleHist.slice(0, 4).map(h => h.v));
+      if (!s.push && info.size > base * 1.12) {
+        const ref = s.hist.find(h => now - h.t < 260) || s.hist[0];
+        s.push = { t: now, base, x: ref?.x ?? s.x, y: ref?.y ?? s.y };
+      }
+      if (s.push) {
+        if (info.size < s.push.base * 1.05) { const p = s.push; s.push = null; if (now - p.t < 700) this.tap(p.x, p.y, now); s.scaleHist = []; }
+        else if (now - s.push.t > 900) { s.push = null; s.scaleHist = []; } // la main s'est juste rapprochée
+      }
+    }
+  }
+
+  tap(x, y, now) {
+    const s = this.s, e = this.engine;
+    if (now - s.lastTap < 450) return; s.lastTap = now;
+    this.cursor.classList.remove('tap'); void this.cursor.offsetWidth; this.cursor.classList.add('tap');
+    const ui = this.uiTarget(x, y);
+    if (ui) { ui.click(); ui.classList.add('hand-clicked'); setTimeout(() => ui.classList.remove('hand-clicked'), 250); return; }
+    const hit = e.pick(x, y);
+    if (hit) e.setSelection(hit.object, hit.role); else e.setSelection(null);
+    e.setHover?.(null);
+  }
+
+  // main ouverte qui balaie : tourner autour de la scène
+  doOrbit(P) {
+    const s = this.s, p = P[9];
+    if (!s.palm) { s.palm = { x: p.x, y: p.y }; return; }
+    const dx = p.x - s.palm.x, dy = p.y - s.palm.y;
+    s.palm.x += dx * 0.6; s.palm.y += dy * 0.6;
+    if (Math.hypot(dx, dy) > 0.8) this.engine.orbitBy(dx * 0.006, dy * 0.005);
+  }
+
+  // poing fermé : l'objet sélectionné suit la main
+  doGrab(P) {
+    const s = this.s, e = this.engine;
+    if (!e.selected || !s.grabOff) return;
+    const fp = e.floorPoint(P[9].x, P[9].y, s.grabY);
+    if (!fp) return;
+    const np = fp.add(s.grabOff);
+    const nx = Math.round(np.x * 20) / 20, nz = Math.round(np.z * 20) / 20;
+    if (nx !== e.selected.position.x || nz !== e.selected.position.z) { e.selected.position.x = nx; e.selected.position.z = nz; s.grabMoved = true; }
   }
 
   uiTarget(x, y) {
     const el = document.elementFromPoint(x, y);
     if (!el || el.tagName === 'CANVAS') return null;
-    return el.closest('button, [data-hand], .card, .chip, input[type=range], summary');
+    return el.closest('button, a, [data-hand], .card, .chip, summary');
   }
-  hover(c, h) {
-    const t = this.uiTarget(h.x, h.y);
+  setUiHover(t) {
     if (this._hov && this._hov !== t) this._hov.classList.remove('hand-hover');
     if (t) t.classList.add('hand-hover'); this._hov = t;
-    c.classList.toggle('over-ui', !!t);
-  }
-
-  press(h, i) {
-    h.pinch = true; h.t0 = performance.now(); h.moved = 0; h.sx = h.x; h.sy = h.y;
-    const ui = this.uiTarget(h.x, h.y);
-    if (ui) { h.mode = 'ui'; h.uiEl = ui; return; }
-    const e = this.engine;
-    const hit = e.pick(h.x, h.y);
-    if (hit) {
-      if (e.selected !== hit.object) e.setSelection(hit.object, hit.role);
-      h.mode = 'grab'; h.planeY = hit.object.position.y;
-      const fp = e.floorPoint(h.x, h.y, h.planeY);
-      h.off = fp ? hit.object.position.clone().sub(fp) : new THREE.Vector3();
-    } else h.mode = 'orbit';
-  }
-  drag(h, dx, dy) {
-    h.moved += Math.hypot(dx, dy);
-    const e = this.engine;
-    if (this.two) return;
-    if (h.mode === 'grab' && e.selected) {
-      const fp = e.floorPoint(h.x, h.y, h.planeY);
-      if (fp) { const p = fp.add(h.off); e.selected.position.x = Math.round(p.x * 20) / 20; e.selected.position.z = Math.round(p.z * 20) / 20; }
-    } else if (h.mode === 'orbit') e.orbitBy(dx * 0.007, dy * 0.006);
-    else if (h.mode === 'ui' && h.uiEl?.type === 'range') {
-      const r = h.uiEl.getBoundingClientRect(); const t = Math.max(0, Math.min(1, (h.x - r.left) / r.width));
-      const min = +h.uiEl.min, max = +h.uiEl.max; h.uiEl.value = min + (max - min) * t; h.uiEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-  }
-  release(h, lost) {
-    const e = this.engine;
-    const quick = performance.now() - h.t0 < 450 && h.moved < 18;
-    if (!lost) {
-      if (h.mode === 'ui' && quick && h.uiEl) { h.uiEl.click(); h.uiEl.classList.add('hand-clicked'); setTimeout(() => h.uiEl?.classList.remove('hand-clicked'), 250); }
-      else if (h.mode === 'ui' && h.uiEl?.type === 'range') h.uiEl.dispatchEvent(new Event('change', { bubbles: true }));
-      else if (h.mode === 'orbit' && quick) e.setSelection(null);
-      else if (h.mode === 'grab' && h.moved > 4) e.commit();
-    } else if (h.mode === 'grab') e.commit();
-    h.pinch = false; h.mode = null; h.uiEl = null;
-  }
-
-  // deux mains qui pincent : agrandir/réduire + tourner l'objet, ou zoomer la vue
-  twoHands() {
-    const [a, b] = this.state; const e = this.engine;
-    const both = a.pinch && b.pinch && a.mode !== 'ui' && b.mode !== 'ui';
-    if (both && !this.two) {
-      this.two = { d: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x), scale: e.selected?.scale.clone(), rotY: e.selected?.rotation.y, radius: e.orbit.radius, sel: !!e.selected };
-    } else if (both && this.two) {
-      const d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
-      const k = d / Math.max(this.two.d, 1);
-      if (this.two.sel && e.selected) {
-        e.selected.scale.copy(this.two.scale).multiplyScalar(THREE.MathUtils.clamp(k, 0.05, 30));
-        e.selected.rotation.y = this.two.rotY - (ang - this.two.ang);
-        this.ui.showDims?.();
-      } else { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(this.two.radius / k, 0.6, 120); }
-    } else if (!both && this.two) {
-      if (this.two.sel) e.commit();
-      this.two = null; a.moved = b.moved = 99; // évite un « clic » au relâchement
-    }
   }
 }

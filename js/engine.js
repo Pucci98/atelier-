@@ -53,6 +53,8 @@ export class Engine extends EventTarget {
     this.selBox = new THREE.Box3Helper(new THREE.Box3(), 0xC8A36A); this.selBox.visible = false; this.helpers.add(this.selBox);
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.98, 1, 96), new THREE.MeshBasicMaterial({ color: 0xC8A36A, transparent: true, opacity: 0.9, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; ring.visible = false; this.selRing = ring; this.helpers.add(ring);
+    this.hoverBox = new THREE.Box3Helper(new THREE.Box3(), 0xF4EEE4); this.hoverBox.material.transparent = true; this.hoverBox.material.opacity = 0.55; this.hoverBox.visible = false; this.helpers.add(this.hoverBox);
+    this.hovered = null;
 
     this.palette = { ...DEFAULT_MATS };
     this.ambiance = 'jour'; this.backdrop = 'studio';
@@ -323,6 +325,12 @@ export class Engine extends EventTarget {
   }
 
   /* ---------- sélection ---------- */
+  // objet visé (pointé du doigt) : simple contour clair
+  setHover(g) {
+    if (g === this.hovered) { if (g) this.hoverBox.box.setFromObject(g); return; }
+    this.hovered = g; this.hoverBox.visible = !!g;
+    if (g) this.hoverBox.box.setFromObject(g);
+  }
   setSelection(g, role = null) {
     this.selected = g; this.selectedRole = role;
     this.updateSelectionHelper();
