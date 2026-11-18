@@ -53,6 +53,7 @@
   </div>
   <div id="selParts" class="chips"></div>
   <div class="sel-tools">
+    <button data-act="sculpt" class="sculpt-btn" hidden><i data-i="sculpt"></i><span>Modeler</span></button>
     <button data-act="material"><i data-i="swatch"></i><span>Matière</span></button>
     <button data-act="params"><i data-i="sliders"></i><span>Réglages</span></button>
     <button data-act="rotate"><i data-i="rotate"></i><span>Pivoter</span></button>
@@ -61,6 +62,12 @@
     <button data-act="delete" class="danger"><i data-i="trash"></i><span>Supprimer</span></button>
   </div>
   <div id="params" class="params" hidden></div>
+  <div id="sculptBar" hidden>
+    <div class="tools" id="sculptTools"></div>
+    <div class="param"><label>Pinceau</label><input type="range" id="scRadius" min="0.02" max="1" step="0.01"><output id="scRadiusO"></output></div>
+    <div class="param"><label>Force</label><input type="range" id="scForce" min="0.05" max="1" step="0.01"><output id="scForceO"></output></div>
+    <div class="rowb"><button class="chip" id="scSym">Symétrie</button><span class="hint" id="scHint" style="font-size:12px;color:rgba(239,234,225,.45)"></span><button class="btn small" id="scDone">Terminer</button></div>
+  </div>
 </section>
 
 <!-- bibliothèque -->

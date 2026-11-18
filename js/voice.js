@@ -7,19 +7,23 @@ const NUM = { un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6, sept
 
 // synonymes → identifiant de la bibliothèque
 const ITEM_WORDS = [
-  ['piece', ['piece', 'salle', 'chambre vide', 'salon vide', 'espace', 'appartement', 'maison', 'studio']],
+  ['argile', ['boule d argile', 'argile', 'boule', 'pate a modeler', 'glaise', 'terre a modeler']], ['argile-bloc', ['bloc d argile', 'bloc de terre']], ['argile-cylindre', ['colonne d argile']], ['argile-anneau', ['anneau d argile']],
+  ['terrain', ['colline', 'collines', 'terrain', 'relief', 'paysage']], ['terrain-montagnes', ['massif', 'chaine de montagnes', 'montagnes']], ['montagne', ['montagne', 'mont', 'volcan', 'pic']], ['plaine', ['plaine', 'prairie', 'champ']],
+  ['eau', ['lac', 'etang', 'eau', 'mer', 'ocean', 'bassin']], ['arbre', ['arbre', 'chene arbre']], ['pin', ['pin', 'sapin', 'conifere']], ['foret', ['foret', 'arbres']], ['rocher', ['rocher', 'caillou', 'roc']],
+  ['quartier', ['quartier', 'ville', 'cite', 'centre ville']], ['immeuble', ['immeuble', 'batiment', 'building']], ['tour', ['tour', 'gratte ciel']], ['maison', ['maison', 'villa', 'pavillon']], ['route', ['route', 'rue', 'avenue', 'chemin']],
+  ['piece', ['piece', 'salle', 'chambre vide', 'salon vide', 'espace interieur', 'appartement', 'studio']],
   ['mur', ['mur', 'cloison', 'paroi']], ['sol', ['sol', 'plancher', 'dalle']], ['baie', ['baie', 'fenetre', 'verriere', 'vitre']],
   ['porte', ['porte']], ['escalier', ['escalier', 'marches']], ['colonne', ['colonne', 'pilier', 'poteau']], ['arche', ['arche', 'arcade', 'voute']],
   ['estrade', ['estrade', 'scene', 'podium']], ['cimaise', ['cimaise', 'panneau', 'expo']],
   ['canape', ['canape', 'sofa']], ['fauteuil', ['fauteuil']], ['table-ronde', ['table ronde', 'gueridon']], ['table', ['table', 'bureau']],
   ['chaise', ['chaise']], ['tabouret', ['tabouret']], ['lit', ['lit']], ['etagere', ['etagere', 'bibliotheque', 'rayonnage']], ['ilot', ['ilot', 'cuisine', 'comptoir', 'bar']],
-  ['tapis', ['tapis']], ['lampe', ['lampadaire', 'lampe']], ['suspension', ['suspension', 'lustre', 'plafonnier']], ['miroir', ['miroir']], ['plante', ['plante', 'arbre', 'vegetal']],
+  ['tapis', ['tapis']], ['lampe', ['lampadaire', 'lampe']], ['suspension', ['suspension', 'lustre', 'plafonnier']], ['miroir', ['miroir']], ['plante', ['plante', 'plante verte', 'vegetal']],
   ['groupe', ['groupe', 'foule', 'des gens', 'plusieurs personnes']],
   ['perso-assis', ['assis', 'personne assise']], ['perso-marche', ['qui marche', 'marcheur', 'en marche']], ['perso-pense', ['pensif', 'qui pense']], ['perso-presente', ['qui presente', 'presentateur', 'guide']],
   ['perso-debout', ['personnage', 'personne', 'homme', 'femme', 'mannequin', 'silhouette', 'humain', 'figurant', 'modele']],
   ['buste', ['buste', 'mannequin couture', 'mannequin de couture']], ['portant', ['portant', 'penderie', 'rack']],
   ['robe', ['robe']], ['jupe', ['jupe']], ['haut', ['haut', 't shirt', 'tshirt', 'tee shirt', 'chemise', 'top', 'pull']], ['manteau', ['manteau', 'veste', 'trench', 'blouson', 'parka']], ['pantalon', ['pantalon', 'jean', 'jogging']],
-  ['cube', ['cube', 'boite', 'bloc']], ['sphere', ['sphere', 'boule', 'balle']], ['cylindre', ['cylindre', 'tube']], ['cone', ['cone']], ['pyramide', ['pyramide']], ['tore', ['anneau', 'tore', 'donut']], ['plaque', ['plaque', 'plateau']],
+  ['cube', ['cube', 'boite', 'bloc']], ['sphere', ['sphere', 'balle']], ['cylindre', ['cylindre', 'tube']], ['cone', ['cone']], ['pyramide', ['pyramide']], ['tore', ['anneau', 'tore', 'donut']], ['plaque', ['plaque', 'plateau']],
   ['spot', ['spot', 'projecteur']], ['neon', ['neon', 'neons', 'bandeau lumineux']],
 ];
 
@@ -59,6 +63,9 @@ export function parseCommand(raw) {
   if (has('efface tout', 'vide tout', 'nouveau projet', 'recommence')) return [{ do: 'clear' }];
   if (has('duplique', 'copie', 'clone', 'encore un', 'encore une')) return [{ do: 'duplicate' }];
   if (has('visite', 'visiter', 'promene', 'entre dans')) return [{ do: 'walk' }];
+  if (has('modele', 'modeler', 'sculpte', 'sculpter', 'faconne')) return [{ do: 'sculpt' }];
+  for (const [tool, words] of [['tirer', ['gonfle', 'tire', 'bombe']], ['creuser', ['creuse', 'enfonce']], ['lisser', ['lisse', 'adoucis']], ['aplatir', ['aplatis', 'rabote']], ['saisir', ['etire', 'allonge']], ['pincer', ['pince', 'affine']]])
+    if (has(...words) && !has('plus grand')) return [{ do: 'tool', value: tool }];
   if (has('vue d ensemble', 'recentre', 'vue globale', 'montre tout', 'cadre')) return [{ do: 'frame' }];
   if (has('exporte', 'envoie', 'partage')) return [{ do: 'export' }];
   if (has('photo', 'capture', 'rendu')) return [{ do: 'shot' }];
@@ -72,7 +79,8 @@ export function parseCommand(raw) {
   const acts = [];
   const item = findLongest(t, ITEM_WORDS);
   const definite = item && new RegExp(`(^| )(le|la|les|l|du|des murs|ce|cette) (${(ITEM_WORDS.find(x => x[0] === item) || [0, []])[1].join('|')})`).test(t) && (findLongest(t, MAT_WORDS) || findLongest(t, COLOR_WORDS) != null);
-  const creating = !definite && has('habille', 'habiller', 'cree', 'creer', 'ajoute', 'ajouter', 'mets', 'met', 'place', 'pose', 'construis', 'fais', 'fait', 'dessine', 'genere', 'imagine', 'installe', 'il me faut', 'je veux', 'donne') || /^(un|une|des|deux|trois|quatre|cinq|six|sept|huit|\d+) /.test(t);
+  const creating = !definite && has('habille', 'habiller', 'cree', 'creer', 'ajoute', 'ajouter', 'mets', 'met', 'place', 'pose', 'construis', 'fais', 'fait', 'dessine', 'genere', 'imagine', 'installe', 'il me faut', 'je veux', 'donne') || /^(un|une|des|deux|trois|quatre|cinq|six|sept|huit|\d+) /.test(t)
+    || (item && (ITEM_WORDS.find(x => x[0] === item) || [0, []])[1].some(w => t.startsWith(w)));
   if (item && creating) {
     const def = CATALOG.find(c => c.id === item);
     let count = 1; const m = t.match(/^(?:\S+ )?(deux|trois|quatre|cinq|six|sept|huit|\d+) /); if (m) { const n = NUM[m[1]] ?? parseInt(m[1]); if (n > 1 && n <= 12 && item !== 'escalier') count = n; }
@@ -80,7 +88,8 @@ export function parseCommand(raw) {
     const params = {};
     if (def && nums.length) {
       const keys = Object.keys(def.ranges || {});
-      if (item === 'piece' || item === 'sol' || item === 'estrade') { if (nums[0]) params.w = nums[0]; if (nums[1]) params.d = nums[1]; if (nums[2]) params.h = nums[2]; if (/m2|metres? carres?/.test(t) && nums.length === 1) { const s = Math.sqrt(nums[0]); params.w = +(s * 1.25).toFixed(2); params.d = +(nums[0] / params.w).toFixed(2); } }
+      if (['immeuble', 'tour'].includes(item) && /etage/.test(t)) params.etages = nums[0];
+      else if (['piece', 'sol', 'estrade', 'immeuble', 'maison'].includes(item)) { if (nums[0]) params.w = nums[0]; if (nums[1]) params.d = nums[1]; if (nums[2]) params.h = nums[2]; if (/m2|metres? carres?/.test(t) && nums.length === 1) { const s = Math.sqrt(nums[0]); params.w = +(s * 1.25).toFixed(2); params.d = +(nums[0] / params.w).toFixed(2); } }
       else if (item === 'escalier') params.n = nums[0];
       else if (item === 'canape') params.places = nums[0] <= 5 ? nums[0] : 3;
       else if (keys[0]) params[keys[0]] = nums[0];

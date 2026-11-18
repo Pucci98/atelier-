@@ -3,9 +3,11 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { material, PALETTES } from './materials.js';
 import { getItem } from './library.js';
+import { Sculptor, packSculpt, unpackSculpt } from './sculpt.js';
 
-const ROLES = ['sol', 'mur', 'mobilier', 'textile', 'metal', 'verre', 'corps', 'vetement'];
-const DEFAULT_MATS = { sol: 'chene', mur: 'enduit', mobilier: 'chene', textile: 'lin', metal: 'acier-noir', verre: 'verre', corps: 'mannequin', vetement: 'lin' };
+const ROLES = ['sol', 'mur', 'mobilier', 'textile', 'metal', 'verre', 'corps', 'vetement', 'forme', 'terrain', 'roche', 'batiment', 'toit', 'trottoir', 'route', 'herbe', 'marquage'];
+const DEFAULT_MATS = { sol: 'chene', mur: 'enduit', mobilier: 'chene', textile: 'lin', metal: 'acier-noir', verre: 'verre', corps: 'mannequin', vetement: 'lin', forme: 'argile', terrain: 'terrain', roche: 'roche', batiment: 'platre', toit: 'argile-grise', trottoir: 'beton-cire', route: 'asphalte', herbe: 'herbe', marquage: '#ecebe6' };
+export { DEFAULT_MATS };
 
 export class Engine extends EventTarget {
   constructor(canvas) {
@@ -18,7 +20,7 @@ export class Engine extends EventTarget {
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.05, 400);
+    this.camera = new THREE.PerspectiveCamera(50, 1, 0.03, 12000);
     this.content = new THREE.Group(); this.content.name = 'Création'; this.scene.add(this.content);
     this.helpers = new THREE.Group(); this.scene.add(this.helpers);
 
@@ -31,13 +33,13 @@ export class Engine extends EventTarget {
     this.walk = null; // mode visite
 
     // sol studio + ombre
-    this.ground = new THREE.Mesh(new THREE.CircleGeometry(60, 96), new THREE.MeshStandardMaterial({ color: 0xd8d2c8, roughness: 0.95 }));
+    this.ground = new THREE.Mesh(new THREE.CircleGeometry(6000, 128), new THREE.MeshStandardMaterial({ color: 0xEFEDE9, roughness: 1 }));
     this.ground.rotation.x = -Math.PI / 2; this.ground.receiveShadow = true; this.ground.name = 'sol-studio';
     this.scene.add(this.ground);
-    this.shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.ShadowMaterial({ opacity: 0.32 }));
+    this.shadowCatcher = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.ShadowMaterial({ opacity: 0.32 }));
     this.shadowCatcher.rotation.x = -Math.PI / 2; this.shadowCatcher.position.y = 0.001; this.shadowCatcher.receiveShadow = true; this.shadowCatcher.visible = false;
     this.scene.add(this.shadowCatcher);
-    this.grid = new THREE.GridHelper(40, 40, 0x000000, 0x000000); this.grid.material.opacity = 0.06; this.grid.material.transparent = true; this.grid.position.y = 0.002;
+    this.grid = new THREE.GridHelper(40, 40, 0x000000, 0x000000); this.grid.material.opacity = 0.06; this.grid.material.transparent = true; this.grid.position.y = 0.002; this.showGrid = false;
     this.scene.add(this.grid);
 
     // lumières
@@ -45,7 +47,7 @@ export class Engine extends EventTarget {
     this.sun = new THREE.DirectionalLight(0xfff0dc, 2.6);
     this.sun.castShadow = true; this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = sc.bottom = -14; sc.right = sc.top = 14; sc.near = 1; sc.far = 60;
-    this.sun.shadow.bias = -0.0004; this.sun.shadow.normalBias = 0.02;
+    this.sun.shadow.bias = -0.0003; this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun, this.sun.target);
 
     // sélection
@@ -62,8 +64,9 @@ export class Engine extends EventTarget {
     this.raycaster = new THREE.Raycaster();
     this.clock = new THREE.Clock();
     this.cutaway = true;
+    this.sculptor = new Sculptor(this);
 
-    this.setAmbiance('jour', false);
+    this.setAmbiance('studio', false);
     this.setBackdrop('studio');
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -91,7 +94,7 @@ export class Engine extends EventTarget {
 
   /* ---------- caméra ---------- */
   orbitBy(dAz, dPol) { const o = this.orbit; o.goal = null; o.az -= dAz; o.pol = THREE.MathUtils.clamp(o.pol - dPol, 0.08, 1.52); }
-  zoomBy(f) { const o = this.orbit; o.goal = null; o.radius = THREE.MathUtils.clamp(o.radius * f, 0.6, 120); }
+  zoomBy(f) { const o = this.orbit; o.goal = null; o.radius = THREE.MathUtils.clamp(o.radius * f, 0.3, 4000); }
   panBy(dx, dy) {
     const o = this.orbit; o.goal = null;
     const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0);
@@ -103,20 +106,27 @@ export class Engine extends EventTarget {
     const b = new THREE.Box3().setFromObject(this.content);
     if (b.isEmpty()) { this.orbit.goal = { target: new THREE.Vector3(0, 0.8, 0), radius: 9 }; return; }
     const s = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
-    this.orbit.goal = { target: new THREE.Vector3(c.x, Math.min(c.y, 1.2), c.z), radius: THREE.MathUtils.clamp(Math.max(s.x, s.z, s.y * 1.4) * 1.45 / Math.min(1, Math.pow(this.camera.aspect, 0.75)), 3, 90) };
+    this.orbit.goal = { target: new THREE.Vector3(c.x, Math.min(c.y, Math.max(1.2, s.y * 0.3)), c.z), radius: THREE.MathUtils.clamp(Math.max(s.x, s.z, s.y * 1.4) * 1.45 / Math.min(1, Math.pow(this.camera.aspect, 0.75)), 1.2, 4000) };
   }
-  focus(obj) {
+  focus(obj, k = 2.4) {
     const b = new THREE.Box3().setFromObject(obj); const s = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
-    this.orbit.goal = { target: c, radius: THREE.MathUtils.clamp(Math.max(s.x, s.y, s.z) * 2.4, 1.5, 60) };
+    this.orbit.goal = { target: c, radius: THREE.MathUtils.clamp(Math.max(s.x, s.y, s.z) * k, 0.8, 4000) };
   }
 
   updateCamera(dt) {
     const o = this.orbit;
     if (this.walk) {
       const w = this.walk;
-      const sp = 1.6 * dt;
+      const sp = (w.speed || 1.8) * dt * (Math.hypot(w.move.x, w.move.y) > 0.92 ? 2.2 : 1);
       const fwd = new THREE.Vector3(-Math.sin(w.yaw), 0, -Math.cos(w.yaw)), right = new THREE.Vector3(Math.cos(w.yaw), 0, -Math.sin(w.yaw));
       w.pos.addScaledVector(fwd, w.move.y * sp).addScaledVector(right, w.move.x * sp);
+      // on suit le sol : terrain, routes, sols (pas les meubles)
+      if (!w.ground || performance.now() - w.groundT > 1500) { w.groundT = performance.now(); w.ground = []; this.content.traverse(o => { if (o.isMesh && (o.userData.sculpt === 'y' || ['sol', 'terrain', 'route', 'trottoir', 'herbe'].includes(o.userData.role))) w.ground.push(o); }); }
+      if (w.ground.length) {
+        this.raycaster.set(new THREE.Vector3(w.pos.x, 5000, w.pos.z), new THREE.Vector3(0, -1, 0));
+        const h = this.raycaster.intersectObjects(w.ground, false)[0];
+        const gy = h ? h.point.y : 0; w.pos.y += (gy + 1.62 - w.pos.y) * 0.25;
+      }
       this.camera.position.lerp(w.pos, 0.35);
       const look = new THREE.Vector3(-Math.sin(w.yaw) * Math.cos(w.pitch), Math.sin(w.pitch), -Math.cos(w.yaw) * Math.cos(w.pitch));
       this.camera.lookAt(this.camera.position.clone().add(look));
@@ -142,7 +152,7 @@ export class Engine extends EventTarget {
     // on entre par le côté d'où l'on regardait, face au centre
     const ext = Math.max(0.5, Math.abs(Math.sin(o.az)) * sz.x / 2 + Math.abs(Math.cos(o.az)) * sz.z / 2 - 0.8);
     const start = new THREE.Vector3(c.x + Math.sin(o.az) * ext, 1.62, c.z + Math.cos(o.az) * ext);
-    this.walk = { pos: start, yaw: o.az, pitch: -0.08, move: { x: 0, y: 0 } };
+    this.walk = { pos: start, yaw: o.az, pitch: -0.08, move: { x: 0, y: 0 }, speed: THREE.MathUtils.clamp(Math.max(sz.x, sz.z) / 12, 1.8, 25) };
     this.camera.position.copy(start);
     this.setCeilings(true);
     this.camera.fov = 68; this.camera.updateProjectionMatrix();
@@ -158,7 +168,7 @@ export class Engine extends EventTarget {
       jour: { sky: 0xE9E4DB, sun: [0xfff0dc, 2.6], dir: [6, 11, 5], hemi: 0.65, env: 0.9, exp: 1.0, lamps: 0.6 },
       doree: { sky: 0xE7C9A2, sun: [0xffb46b, 3.2], dir: [10, 3.2, 2], hemi: 0.35, env: 0.55, exp: 1.05, lamps: 0.9 },
       soir: { sky: 0x1C1A1F, sun: [0x6f86c9, 0.25], dir: [-4, 8, -3], hemi: 0.08, env: 0.12, exp: 1.15, lamps: 1.6 },
-      studio: { sky: 0xF2F0EC, sun: [0xffffff, 1.6], dir: [3, 12, 6], hemi: 0.9, env: 1.2, exp: 1.0, lamps: 0.5 },
+      studio: { sky: 0xF3F2EF, sun: [0xffffff, 1.7], dir: [4, 12, 7], hemi: 0.85, env: 1.1, exp: 1.0, lamps: 0.5 },
       galerie: { sky: 0xDADCDE, sun: [0xf4f7ff, 1.2], dir: [0, 14, 2], hemi: 0.5, env: 0.8, exp: 1.0, lamps: 1.2 },
     }[name] || {};
     this.sun.color.set(A.sun[0]); this.sun.intensity = A.sun[1];
@@ -175,11 +185,12 @@ export class Engine extends EventTarget {
   applyBackdrop() {
     const cam = this.backdrop === 'camera';
     this.scene.background = cam ? null : this.skyColor;
-    this.scene.fog = cam ? null : new THREE.Fog(this.skyColor, 30, 90);
+    this.scene.fog = cam ? null : new THREE.Fog(this.skyColor, 60, 400);
     this.ground.visible = !cam; this.shadowCatcher.visible = cam;
     this.grid.visible = !cam && this.showGrid !== false;
     if (!cam) {
-      const g = this.skyColor.clone().offsetHSL(0, 0, this.ambiance === 'soir' ? 0.03 : -0.05);
+      // sol et ciel de la même teinte : un studio sans horizon, sans limite
+      const g = this.skyColor.clone().offsetHSL(0, 0, this.ambiance === 'soir' ? 0.02 : -0.012);
       this.ground.material.color.copy(g);
     }
   }
@@ -209,7 +220,7 @@ export class Engine extends EventTarget {
     }
     if (opts.rotY != null) g.rotation.y = opts.rotY;
     else if (def.cat !== 'Espaces') g.rotation.y = Math.round(this.orbit.az / (Math.PI / 2)) * (Math.PI / 2);
-    if (!opts.pos && def.cat !== 'Espaces' && !def.garment && !['tapis', 'suspension', 'spot'].includes(type)) this.findFreeSpot(g);
+    if (!opts.pos && def.cat !== 'Espaces' && !def.big && !def.garment && !['tapis', 'suspension', 'spot'].includes(type)) this.findFreeSpot(g);
     if (opts.scale) g.scale.fromArray(opts.scale);
     // vêtement : s'ajuste sur le personnage ou le buste sélectionné
     if (def.garment && !opts.pos && this.selected) {
@@ -221,11 +232,22 @@ export class Engine extends EventTarget {
         if (st === 'buste') { g.scale.multiplyScalar(1); }
       }
     }
+    if (!opts.pos && !def.big) { this.content.updateMatrixWorld(true); g.position.y = this.groundY(g.position.x, g.position.z); }
+    if (opts.sculpt) { const m = this.sculptor.meshOf(g); if (m && unpackSculpt(m, opts.sculpt)) m.userData.sculpted = true; }
     this.applyMaterials(g);
     this.content.add(g);
     this.updateLamps();
     if (!opts.silent) { this.setSelection(g); this.commit(); }
     return g;
+  }
+
+  // altitude du relief (terrains, montagnes) sous un point
+  groundY(x, z, except) {
+    const ground = []; this.content.traverse(o => { if (o.isMesh && o.userData.sculpt === 'y') { let r = o; while (r.parent && r.parent !== this.content) r = r.parent; if (r !== except) ground.push(o); } });
+    if (!ground.length) return 0;
+    this.raycaster.set(new THREE.Vector3(x, 10000, z), new THREE.Vector3(0, -1, 0));
+    const h = this.raycaster.intersectObjects(ground, false)[0];
+    return h ? Math.max(0, h.point.y) : 0;
   }
 
   // cherche une place libre autour du centre de la vue, sans chevaucher les autres éléments et si possible dans la pièce
@@ -338,7 +360,8 @@ export class Engine extends EventTarget {
   }
   updateSelectionHelper() {
     const g = this.selected;
-    this.selBox.visible = !!g && !this.walk; this.selRing.visible = !!g && !this.walk;
+    const show = !!g && !this.walk && !this.sculptor?.active;
+    this.selBox.visible = show; this.selRing.visible = show;
     if (!g) return;
     this.selBox.box.setFromObject(g);
     const s = this.selBox.box.getSize(new THREE.Vector3()), c = this.selBox.box.getCenter(new THREE.Vector3());
@@ -372,7 +395,9 @@ export class Engine extends EventTarget {
 
   /* ---------- historique & sérialisation ---------- */
   serializeItem(g) {
-    return { id: g.userData.id, type: g.userData.type, params: g.userData.params, mats: g.userData.mats, pos: g.position.toArray().map(v => +v.toFixed(4)), rotY: +g.rotation.y.toFixed(4), scale: g.scale.toArray().map(v => +v.toFixed(4)) };
+    const it = { id: g.userData.id, type: g.userData.type, params: g.userData.params, mats: g.userData.mats, pos: g.position.toArray().map(v => +v.toFixed(4)), rotY: +g.rotation.y.toFixed(4), scale: g.scale.toArray().map(v => +v.toFixed(4)) };
+    const m = this.sculptor.meshOf(g); if (m?.userData.sculpted) it.sculpt = m.userData.packed || (m.userData.packed = packSculpt(m));
+    return it;
   }
   serialize() {
     return { app: 'atelier', v: 1, ambiance: this.ambiance, palette: this.palette, items: this.content.children.map(g => this.serializeItem(g)), camera: { target: this.orbit.target.toArray(), radius: this.orbit.radius, az: this.orbit.az, pol: this.orbit.pol } };
@@ -391,7 +416,7 @@ export class Engine extends EventTarget {
   }
   commit() {
     const s = JSON.stringify(this.serialize());
-    if (this.history[this.history.length - 1] !== s) { this.history.push(s); if (this.history.length > 80) this.history.shift(); this.future = []; }
+    if (this.history[this.history.length - 1] !== s) { this.history.push(s); if (this.history.length > 40) this.history.shift(); this.future = []; }
     this.dispatchEvent(new Event('change'));
   }
   undo() {
@@ -415,7 +440,12 @@ export class Engine extends EventTarget {
     // soleil qui suit la zone de travail (ombres nettes)
     const t = this.walk ? this.camera.position : this.orbit.target;
     this.sun.target.position.set(t.x, 0, t.z);
-    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 25);
+    const R = this.walk ? 30 : this.orbit.radius;
+    const span = THREE.MathUtils.clamp(R * 0.9, 8, 900);
+    const sc = this.sun.shadow.camera;
+    if (Math.abs(sc.right - span) / span > 0.15) { sc.left = sc.bottom = -span; sc.right = sc.top = span; sc.far = span * 6; sc.updateProjectionMatrix(); }
+    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, span * 2.5);
+    if (this.scene.fog) { this.scene.fog.near = Math.max(60, R * 2.2); this.scene.fog.far = Math.max(400, R * 9); }
     // murs qui s'effacent face à la caméra (vue maison de poupée)
     const camDir = new THREE.Vector3(); this.camera.getWorldDirection(camDir);
     const q = new THREE.Quaternion(), n = new THREE.Vector3();
@@ -431,7 +461,7 @@ export class Engine extends EventTarget {
       m.opacity += (target - m.opacity) * 0.2;
       m.depthWrite = m.opacity > 0.95; o.castShadow = m.opacity > 0.5;
     });
-    if (this.selected) this.updateSelectionHelper();
+    if (this.selected) this.updateSelectionHelper(); else if (this.selBox.visible) this.selBox.visible = this.selRing.visible = false;
     this.dispatchEvent(new CustomEvent('frame', { detail: dt }));
     this.renderer.render(this.scene, this.camera);
   }

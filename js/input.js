@@ -16,6 +16,11 @@ export function setupInput(engine, canvas, ui) {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
     moved = false; downTime = performance.now();
     if (engine.walk) { mode = 'look'; return; }
+    const sc = engine.sculptor;
+    if (pts.size === 1 && sc.active && engine.selected && e.button !== 2) {
+      if (sc.begin(engine.selected, e.clientX, e.clientY)) { mode = 'sculpt'; return; }
+    }
+    if (pts.size === 2 && mode === 'sculpt') { sc.end(); engine.commit(); }
     if (pts.size === 1) {
       const hit = engine.pick(e.clientX, e.clientY);
       const btn = e.button;
@@ -32,7 +37,7 @@ export function setupInput(engine, canvas, ui) {
     } else if (pts.size === 2) {
       mode = 'two';
       const s = twoState();
-      two = { ...s, scale: engine.selected?.scale.clone(), rotY: engine.selected?.rotation.y, radius: engine.orbit.radius, onSel: !!engine.selected };
+      two = { ...s, scale: engine.selected?.scale.clone(), rotY: engine.selected?.rotation.y, radius: engine.orbit.radius, onSel: !!engine.selected && !engine.sculptor.active };
     }
   });
 
@@ -44,6 +49,7 @@ export function setupInput(engine, canvas, ui) {
     if (mode === 'look' && engine.walk) {
       engine.walk.yaw -= dx * 0.005; engine.walk.pitch = THREE.MathUtils.clamp(engine.walk.pitch - dy * 0.004, -1.2, 1.2); return;
     }
+    if (mode === 'sculpt') { engine.sculptor.move(e.clientX, e.clientY); return; }
     if (mode === 'orbit' && moved) engine.orbitBy(dx * 0.006, dy * 0.006);
     else if (mode === 'pan') engine.panBy(dx, dy);
     else if (mode === 'drag' && engine.selected) {
@@ -60,7 +66,7 @@ export function setupInput(engine, canvas, ui) {
         ui.showDims?.();
       } else {
         engine.orbit.goal = null;
-        engine.orbit.radius = THREE.MathUtils.clamp(two.radius * two.d / s.d, 0.6, 120);
+        engine.orbit.radius = THREE.MathUtils.clamp(two.radius * two.d / s.d, 0.3, 4000);
         engine.panBy(s.c.x - two.c.x, s.c.y - two.c.y); two.c = s.c;
       }
     }
@@ -69,6 +75,7 @@ export function setupInput(engine, canvas, ui) {
   function end(e) {
     const p = pts.get(e.pointerId); pts.delete(e.pointerId);
     if (!p) return;
+    if (mode === 'sculpt') { if (engine.sculptor.end()) engine.commit(); if (!pts.size) mode = null; return; }
     const tap = !moved && performance.now() - downTime < 400;
     if (mode === 'look') { if (!pts.size) mode = null; return; }
     if (tap && mode !== 'two') {

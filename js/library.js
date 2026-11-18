@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { material } from './materials.js';
+import { weld, sculptUV } from './sculpt.js';
 
 /* ---------- utilitaires ---------- */
 // UV « métriques » par projection selon l'axe dominant de la normale : 1 unité UV = 1 mètre
@@ -311,7 +312,7 @@ function portant({ w = 1.4, h = 1.65 }) {
 }
 
 /* ---------- formes ---------- */
-const forme = geoFn => p => { const g = new THREE.Group(); const m = part(geoFn(p), 'mobilier'); g.add(m); return g; };
+const forme = geoFn => p => { const g = new THREE.Group(); const m = part(geoFn(p), 'forme'); g.add(m); return g; };
 const formes = {
   cube: forme(({ s = 0.6 }) => { const b = box(s, s, s, 0.004); b.translate(0, s / 2, 0); return b; }),
   sphere: forme(({ s = 0.6 }) => { const b = new THREE.SphereGeometry(s / 2, 64, 48); b.translate(0, s / 2, 0); return b; }),
@@ -435,9 +436,267 @@ function neon({ w = 1.2, couleur = 0xffb36b }) {
   return g;
 }
 
+
+/* ---------- matière à modeler ---------- */
+function argile({ s = 0.7, forme: f = 'boule' }) {
+  let geo;
+  if (f === 'boule') geo = new THREE.IcosahedronGeometry(s / 2, 40);
+  else if (f === 'bloc') geo = new THREE.BoxGeometry(s, s, s, 28, 28, 28);
+  else if (f === 'cylindre') geo = new THREE.CylinderGeometry(s / 2, s / 2, s * 1.2, 72, 36, false);
+  else geo = new THREE.TorusGeometry(s / 2.6, s / 7, 40, 120);
+  geo = weld(geo);
+  const b = new THREE.Box3().setFromBufferAttribute(geo.attributes.position);
+  geo.translate(0, -b.min.y, 0);
+  sculptUV(geo, 'box');
+  const g = new THREE.Group(); const m = part(geo, 'forme'); m.userData.sculpt = 'libre'; g.add(m);
+  return g;
+}
+
+/* ---------- paysages ---------- */
+function fbm2(x, y, oct, seed) {
+  let a = 0, amp = 0.5, f = 1;
+  for (let o = 0; o < oct; o++) { a += amp * vnoise(x * f + seed * 17.1, y * f - seed * 9.7); f *= 2.03; amp *= 0.5; }
+  return a;
+}
+function hash(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+  return (a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v) * 2 - 1;
+}
+
+// couleurs naturelles selon l'altitude et la pente : sable, herbe, terre, roche, neige
+function terrainColors(geo) {
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  let minY = Infinity, maxY = -Infinity; for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y < minY) minY = y; if (y > maxY) maxY = y; }
+  const span = Math.max(maxY - minY, 1e-3);
+  const col = new Float32Array(p.count * 3);
+  const C = { sable: [0.80, 0.73, 0.58], herbe: [0.30, 0.38, 0.20], herbe2: [0.42, 0.45, 0.25], terre: [0.42, 0.34, 0.25], roche: [0.47, 0.45, 0.42], neige: [0.94, 0.95, 0.96] };
+  const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const h = (y - minY) / span, slope = 1 - Math.abs(n.getY(i));
+    const v = vnoise(x * 0.08, z * 0.08) * 0.5 + 0.5, fine = vnoise(x * 0.9, z * 0.9) * 0.06;
+    let c = mix(C.herbe, C.herbe2, v);
+    if (h < 0.04 && span > 2) c = mix(mix(C.herbe, C.terre, 0.25), c, h / 0.04);
+    if (slope > 0.35) c = mix(c, C.terre, Math.min(1, (slope - 0.35) * 4));
+    if (slope > 0.55) c = mix(c, C.roche, Math.min(1, (slope - 0.55) * 4));
+    if (h > 0.78 && span > 60) c = mix(c, C.neige, Math.min(1, (h - 0.72) * 6) * (1 - Math.min(1, slope * 1.3)));
+    // couleurs données en sRGB → espace linéaire du rendu
+    col[i * 3] = Math.pow(Math.max(0, c[0] + fine), 2.2); col[i * 3 + 1] = Math.pow(Math.max(0, c[1] + fine), 2.2); col[i * 3 + 2] = Math.pow(Math.max(0, c[2] + fine), 2.2);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+}
+
+function terrain({ taille = 120, relief = 18, style = 1, variante = 1 }) {
+  const seg = 180;
+  const geo = new THREE.PlaneGeometry(taille, taille, seg, seg); geo.rotateX(-Math.PI / 2);
+  const p = geo.attributes.position; const k = 3.2 / taille * (style >= 2 ? 1.6 : 1);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i);
+    let h = fbm2(x * k, z * k, 6, variante);
+    if (style >= 2) h = 1 - Math.abs(h) * 2.2;            // crêtes de montagnes
+    else if (style <= 0) h = h * 0.25;                      // plaine
+    // bords qui descendent doucement pour un paysage « posé »
+    // les bords redescendent en douceur jusqu'au sol du studio
+    const r = Math.max(Math.abs(x), Math.abs(z)) / (taille / 2); const t = Math.min(1, Math.max(0, (1 - r) / 0.3)); const edge = t * t * (3 - 2 * t);
+    p.setY(i, Math.max(0, (h * 0.5 + 0.5) * relief) * edge);
+  }
+  const g = weld(geo); g.computeVertexNormals(); terrainColors(g); sculptUV(g, 'plan');
+  const grp = new THREE.Group(); const m = part(g, 'terrain', 0, 0, 0, { cast: false }); m.castShadow = true; m.userData.sculpt = 'y'; m.userData.recolor = terrainColors;
+  grp.add(m); return grp;
+}
+
+function eau({ taille = 60 }) {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.CircleGeometry(taille / 2, 96), new THREE.MeshPhysicalMaterial({ color: 0x29505c, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.86, clearcoat: 1, clearcoatRoughness: 0.08 }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 0.02; m.receiveShadow = true; m.userData.role = 'eau'; g.add(m);
+  return g;
+}
+
+// feuillage : amas de sphères déformées, teintes variées, fusionnés en un seul objet
+const LEAF = [0x2F4A2A, 0x3B5631, 0x4A6338, 0x55703F];
+function feuillage(r, rnd, n = 7) {
+  const geos = [];
+  for (let i = 0; i < n; i++) {
+    const s = r * (0.45 + rnd() * 0.4);
+    const geo = new THREE.IcosahedronGeometry(s, 3);
+    const pos = geo.attributes.position;
+    for (let j = 0; j < pos.count; j++) { const x = pos.getX(j), y = pos.getY(j), z = pos.getZ(j); const f = 1 + (hash(x * 13 + i, z * 7 + y) - 0.5) * 0.35; pos.setXYZ(j, x * f, y * f * 0.85, z * f); }
+    const a = rnd() * Math.PI * 2, d = r * 0.55 * rnd();
+    geo.translate(Math.cos(a) * d, (rnd() - 0.3) * r * 0.7, Math.sin(a) * d);
+    const c = new THREE.Color(LEAF[Math.floor(rnd() * LEAF.length)]).offsetHSL(0, 0, (rnd() - 0.5) * 0.05);
+    const col = new Float32Array(pos.count * 3); for (let j = 0; j < pos.count; j++) { col[j * 3] = c.r; col[j * 3 + 1] = c.g; col[j * 3 + 2] = c.b; }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.deleteAttribute('uv');
+    geo.computeVertexNormals();
+    geos.push(geo.index ? geo.toNonIndexed() : geo);
+  }
+  return mergeGeos(geos);
+}
+function mergeGeos(list) {
+  let n = 0; for (const g of list) n += g.attributes.position.count;
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), nor = new Float32Array(n * 3); let o = 0;
+  for (const g of list) { pos.set(g.attributes.position.array, o * 3); col.set(g.attributes.color.array, o * 3); nor.set(g.attributes.normal.array, o * 3); o += g.attributes.position.count; }
+  const m = new THREE.BufferGeometry(); m.setAttribute('position', new THREE.BufferAttribute(pos, 3)); m.setAttribute('color', new THREE.BufferAttribute(col, 3)); m.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return m;
+}
+const leafMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+const barkMat = new THREE.MeshStandardMaterial({ color: 0x4B3C2E, roughness: 0.95 });
+const pineMat = new THREE.MeshStandardMaterial({ color: 0x24392B, roughness: 0.9 });
+
+function unArbre(h, essence, seed) {
+  const rnd = (() => { let s = seed * 9301 + 49297; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+  const g = new THREE.Group();
+  if (essence === 'pin') {
+    const tr = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.02, h * 0.035, h * 0.45, 8), barkMat); tr.position.y = h * 0.22; tr.castShadow = true; g.add(tr);
+    for (let i = 0; i < 4; i++) {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(h * (0.24 - i * 0.045), h * 0.34, 9), pineMat);
+      c.position.y = h * (0.38 + i * 0.16); c.rotation.y = rnd() * 3; c.castShadow = true; g.add(c);
+    }
+  } else {
+    const tr = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.025, h * 0.045, h * 0.55, 8), barkMat); tr.position.y = h * 0.27; tr.castShadow = true; g.add(tr);
+    for (let i = 0; i < 3; i++) {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(h * 0.008, h * 0.018, h * 0.3, 6), barkMat);
+      const a = i * 2.1 + rnd(); b.position.set(Math.cos(a) * h * 0.06, h * 0.55, Math.sin(a) * h * 0.06); b.rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6); g.add(b);
+    }
+    const f = new THREE.Mesh(feuillage(h * 0.32, rnd, 6 + Math.floor(rnd() * 3)), leafMat); f.position.y = h * 0.72; f.castShadow = true; g.add(f);
+  }
+  return g;
+}
+function arbre({ h = 7, essence = 0, variante = 1 }) { const g = new THREE.Group(); g.add(unArbre(h, essence >= 1 ? 'pin' : 'feuillu', variante)); return g; }
+
+function foret({ taille = 40, densite = 40, variante = 1 }) {
+  const g = new THREE.Group(); const rnd = (() => { let s = variante * 7919 + 13; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+  const n = Math.round(densite);
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * taille / 2;
+    const t = unArbre(5 + rnd() * 7, rnd() > 0.55 ? 'pin' : 'feuillu', i + variante * 100);
+    t.position.set(Math.cos(a) * d, 0, Math.sin(a) * d); t.rotation.y = rnd() * 6; g.add(t);
+  }
+  return g;
+}
+
+function rocher({ s = 1.2, variante = 1 }) {
+  const geo = new THREE.IcosahedronGeometry(s / 2, 5); const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const n = fbm2(x * 2.2 / s + variante, z * 2.2 / s + y * 1.7 / s, 4, variante) * 0.45 + 1;
+    p.setXYZ(i, x * n * 1.15, y * n * 0.75, z * n);
+  }
+  const w = weld(geo); const b = new THREE.Box3().setFromBufferAttribute(w.attributes.position); w.translate(0, -b.min.y - s * 0.08, 0); sculptUV(w, 'box');
+  const g = new THREE.Group(); const m = part(w, 'roche'); m.userData.sculpt = 'libre'; g.add(m); return g;
+}
+
+function montagne({ h = 60, variante = 1 }) {
+  const r = h * 1.6, geo = new THREE.CircleGeometry(r, 120, 0, Math.PI * 2);
+  const seg = new THREE.PlaneGeometry(r * 2, r * 2, 140, 140); seg.rotateX(-Math.PI / 2);
+  const p = seg.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), z = p.getZ(i); const d = Math.hypot(x, z) / r;
+    const base = Math.max(0, 1 - d); const ridge = 1 - Math.abs(fbm2(x / r * 2.5, z / r * 2.5, 5, variante)) * 1.6;
+    p.setY(i, Math.max(0, Math.pow(base, 1.5) * h * (0.65 + ridge * 0.45)));
+  }
+  geo.dispose();
+  const w = weld(seg); w.computeVertexNormals(); terrainColors(w); sculptUV(w, 'plan');
+  const g = new THREE.Group(); const m = part(w, 'terrain'); m.userData.sculpt = 'y'; m.userData.recolor = terrainColors; g.add(m); return g;
+}
+
+/* ---------- villes ---------- */
+function immeuble({ w = 18, d = 14, etages = 6, toit = 1 }) {
+  const g = new THREE.Group(); const H = etages * 3.1;
+  g.add(part(box(w, H, d), 'batiment', 0, H / 2, 0));
+  // bandeaux d'étages et fenêtres en creux suggérés par des lames
+  for (let i = 1; i < etages; i++) g.add(part(box(w + 0.12, 0.18, d + 0.12), 'batiment', 0, i * 3.1, 0, { cast: false }));
+  const nx = Math.max(2, Math.round(w / 3)), nz = Math.max(2, Math.round(d / 3));
+  const glass = (geo, x, y, z) => g.add(part(geo, 'verre', x, y, z, { cast: false }));
+  for (let i = 0; i < etages; i++) {
+    const y = i * 3.1 + 1.65;
+    for (let k = 0; k < nx; k++) { const x = -w / 2 + (k + 0.5) * w / nx; glass(box(w / nx * 0.55, 1.6, 0.06), x, y, d / 2 + 0.01); glass(box(w / nx * 0.55, 1.6, 0.06), x, y, -d / 2 - 0.01); }
+    for (let k = 0; k < nz; k++) { const z = -d / 2 + (k + 0.5) * d / nz; glass(box(0.06, 1.6, d / nz * 0.55), w / 2 + 0.01, y, z); glass(box(0.06, 1.6, d / nz * 0.55), -w / 2 - 0.01, y, z); }
+  }
+  if (toit) g.add(part(box(w * 0.4, 2.4, d * 0.4), 'batiment', w * 0.15, H + 1.2, -d * 0.1));
+  return g;
+}
+
+function tour({ w = 22, etages = 30 }) {
+  const g = new THREE.Group(); const H = etages * 3.6;
+  g.add(part(box(w, H, w), 'verre', 0, H / 2, 0));
+  g.add(part(box(w * 0.94, H + 0.4, w * 0.94), 'batiment', 0, H / 2, 0, { cast: false }));
+  for (let i = 0; i <= etages; i += 1) g.add(part(box(w + 0.2, 0.25, w + 0.2), 'metal', 0, i * 3.6, 0, { cast: false }));
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) g.add(part(box(0.5, H, 0.5), 'metal', x * w / 2, H / 2, z * w / 2, { cast: false }));
+  return g;
+}
+
+function maison({ w = 9, d = 11 }) {
+  const g = new THREE.Group(); const H = 3;
+  g.add(part(box(w, H, d), 'batiment', 0, H / 2, 0));
+  const roof = new THREE.Shape(); roof.moveTo(-w / 2 - 0.4, 0); roof.lineTo(0, w * 0.42); roof.lineTo(w / 2 + 0.4, 0); roof.lineTo(-w / 2 - 0.4, 0);
+  const rg = new THREE.ExtrudeGeometry(roof, { depth: d + 0.6, bevelEnabled: false }); rg.translate(0, 0, -(d + 0.6) / 2); rg.computeVertexNormals();
+  g.add(part(metricUV(rg), 'toit', 0, H, 0));
+  g.add(part(box(1.1, 2.2, 0.08), 'mobilier', 0, 1.1, d / 2 + 0.02, { cast: false }));
+  for (const x of [-w / 3, w / 3]) g.add(part(box(1.3, 1.3, 0.06), 'verre', x, 1.7, d / 2 + 0.02, { cast: false }));
+  return g;
+}
+
+function quartier({ blocs = 4, hauteur = 12, variante = 1 }) {
+  const g = new THREE.Group(); const B = 44, rue = 14; const n = Math.round(blocs);
+  const rnd = (() => { let s = variante * 104729 + 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+  const tot = n * B + (n + 1) * rue;
+  g.add(part(box(tot, 0.08, tot), 'route', 0, 0.04, 0, { cast: false }));
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const cx = -tot / 2 + rue + B / 2 + i * (B + rue), cz = -tot / 2 + rue + B / 2 + j * (B + rue);
+    g.add(part(box(B + 3, 0.18, B + 3), 'trottoir', cx, 0.09, cz, { cast: false })); // trottoir
+    const center = 1 - Math.hypot(i - (n - 1) / 2, j - (n - 1) / 2) / n;
+    if (rnd() < 0.12) { // parc
+      g.add(part(box(B - 2, 0.1, B - 2), 'herbe', cx, 0.2, cz, { cast: false }));
+      for (let t = 0; t < 7; t++) { const tr = unArbre(6 + rnd() * 5, 'feuillu', t + i * 9 + j); tr.position.set(cx + (rnd() - 0.5) * (B - 8), 0.2, cz + (rnd() - 0.5) * (B - 8)); g.add(tr); }
+      continue;
+    }
+    const k = 2; const lot = B / k;
+    for (let a = 0; a < k; a++) for (let b = 0; b < k; b++) {
+      const et = Math.max(2, Math.round(hauteur * (0.35 + center * 0.9) * (0.5 + rnd())));
+      const bw = lot - 2 - rnd() * 4, bd = lot - 2 - rnd() * 4;
+      const H = et * 3.1;
+      const x = cx - B / 2 + lot * (a + 0.5), z = cz - B / 2 + lot * (b + 0.5);
+      g.add(part(box(bw, H, bd), 'batiment', x, 0.18 + H / 2, z));
+      if (et > 8 && rnd() > 0.4) g.add(part(box(bw * 0.6, H * 0.35, bd * 0.6), 'batiment', x, 0.18 + H + H * 0.175, z));
+    }
+  }
+  return g;
+}
+
+function route({ l = 60, w = 12 }) {
+  const g = new THREE.Group();
+  g.add(part(box(w, 0.08, l), 'route', 0, 0.04, 0, { cast: false }));
+  for (let z = -l / 2 + 2; z < l / 2 - 2; z += 6) g.add(part(box(0.18, 0.01, 3), 'marquage', 0, 0.085, z + 1.5, { cast: false }));
+  return g;
+}
+
 /* ---------- catalogue ---------- */
 // roles : rôles présents → matière par défaut prise dans la palette active
 export const CATALOG = [
+  // Modeler
+  { id: 'argile', cat: 'Modeler', name: 'Boule d’argile', build: p => argile({ ...p, forme: 'boule' }), params: { s: 0.7 }, sculpt: true },
+  { id: 'argile-bloc', cat: 'Modeler', name: 'Bloc d’argile', build: p => argile({ ...p, forme: 'bloc' }), params: { s: 0.6 }, sculpt: true },
+  { id: 'argile-cylindre', cat: 'Modeler', name: 'Colonne d’argile', build: p => argile({ ...p, forme: 'cylindre' }), params: { s: 0.6 }, sculpt: true },
+  { id: 'argile-anneau', cat: 'Modeler', name: 'Anneau d’argile', build: p => argile({ ...p, forme: 'anneau' }), params: { s: 0.7 }, sculpt: true },
+  // Paysages
+  { id: 'terrain', cat: 'Paysages', name: 'Collines', build: p => terrain({ ...p, style: 1 }), params: { taille: 120, relief: 16, variante: 1 }, ranges: { taille: [20, 1500], relief: [0, 200], variante: [1, 50, 1] }, labels: { taille: 'Étendue', relief: 'Relief', variante: 'Variante' }, sculpt: true, big: true },
+  { id: 'terrain-montagnes', cat: 'Paysages', name: 'Massif', build: p => terrain({ ...p, style: 2 }), params: { taille: 300, relief: 70, variante: 3 }, ranges: { taille: [40, 2000], relief: [5, 400], variante: [1, 50, 1] }, labels: { taille: 'Étendue', relief: 'Relief', variante: 'Variante' }, sculpt: true, big: true },
+  { id: 'plaine', cat: 'Paysages', name: 'Plaine', build: p => terrain({ ...p, style: 0 }), params: { taille: 200, relief: 4, variante: 2 }, ranges: { taille: [20, 2000], relief: [0, 40], variante: [1, 50, 1] }, labels: { taille: 'Étendue', relief: 'Relief', variante: 'Variante' }, sculpt: true, big: true },
+  { id: 'montagne', cat: 'Paysages', name: 'Montagne', build: montagne, params: { h: 60, variante: 1 }, ranges: { h: [5, 600], variante: [1, 50, 1] }, labels: { h: 'Hauteur', variante: 'Variante' }, sculpt: true, big: true },
+  { id: 'eau', cat: 'Paysages', name: 'Lac', build: eau, params: { taille: 60 }, ranges: { taille: [2, 2000] }, labels: { taille: 'Diamètre' }, big: true },
+  { id: 'arbre', cat: 'Paysages', name: 'Arbre', build: p => arbre({ ...p, essence: 0 }), params: { h: 8, variante: 1 }, ranges: { h: [1, 40], variante: [1, 50, 1] }, labels: { h: 'Hauteur', variante: 'Variante' } },
+  { id: 'pin', cat: 'Paysages', name: 'Pin', build: p => arbre({ ...p, essence: 1 }), params: { h: 10, variante: 1 }, ranges: { h: [1, 50], variante: [1, 50, 1] }, labels: { h: 'Hauteur', variante: 'Variante' } },
+  { id: 'foret', cat: 'Paysages', name: 'Forêt', build: foret, params: { taille: 40, densite: 40, variante: 1 }, ranges: { taille: [8, 400], densite: [5, 220, 1], variante: [1, 50, 1] }, labels: { taille: 'Étendue', densite: 'Arbres', variante: 'Variante' }, big: true },
+  { id: 'rocher', cat: 'Paysages', name: 'Rocher', build: rocher, params: { s: 1.4, variante: 1 }, ranges: { s: [0.2, 40], variante: [1, 50, 1] }, labels: { s: 'Taille', variante: 'Variante' }, sculpt: true },
+  // Villes
+  { id: 'quartier', cat: 'Villes', name: 'Quartier', build: quartier, params: { blocs: 4, hauteur: 12, variante: 1 }, ranges: { blocs: [1, 10, 1], hauteur: [2, 60, 1], variante: [1, 50, 1] }, labels: { blocs: 'Îlots', hauteur: 'Étages', variante: 'Variante' }, big: true },
+  { id: 'immeuble', cat: 'Villes', name: 'Immeuble', build: immeuble, params: { w: 18, d: 14, etages: 6 }, ranges: { w: [6, 80], d: [6, 80], etages: [1, 40, 1] }, labels: { w: 'Largeur', d: 'Profondeur', etages: 'Étages' }, big: true },
+  { id: 'tour', cat: 'Villes', name: 'Tour', build: tour, params: { w: 22, etages: 30 }, ranges: { w: [8, 80], etages: [5, 160, 1] }, labels: { w: 'Largeur', etages: 'Étages' }, big: true },
+  { id: 'maison', cat: 'Villes', name: 'Maison', build: maison, params: { w: 9, d: 11 }, ranges: { w: [5, 30], d: [5, 30] }, labels: { w: 'Largeur', d: 'Longueur' }, big: true },
+  { id: 'route', cat: 'Villes', name: 'Route', build: route, params: { l: 60, w: 12 }, ranges: { l: [6, 1000], w: [3, 40] }, labels: { l: 'Longueur', w: 'Largeur' }, big: true },
   // Espaces
   { id: 'piece', cat: 'Espaces', name: 'Pièce', build: piece, params: { w: 5, d: 4, h: 2.7 }, ranges: { w: [1.5, 20], d: [1.5, 20], h: [2.1, 6] }, labels: { w: 'Largeur', d: 'Profondeur', h: 'Hauteur' } },
   { id: 'mur', cat: 'Espaces', name: 'Mur', build: mur, params: { w: 3, h: 2.7 }, ranges: { w: [0.3, 20], h: [0.3, 8] }, labels: { w: 'Longueur', h: 'Hauteur' } },
@@ -480,11 +739,11 @@ export const CATALOG = [
   { id: 'manteau', cat: 'Mode', name: 'Manteau', build: p => vetement({ ...p, modele: 'manteau' }), params: { longueur: 1 }, ranges: { longueur: [0.5, 1.2] }, labels: { longueur: 'Longueur' }, garment: true },
   { id: 'pantalon', cat: 'Mode', name: 'Pantalon', build: p => vetement({ ...p, modele: 'pantalon' }), params: { longueur: 1 }, ranges: { longueur: [0, 1] }, labels: { longueur: 'Évasé' }, garment: true },
   // Formes
-  ...Object.entries(formes).map(([id, build]) => ({ id, cat: 'Formes', name: { cube: 'Cube', sphere: 'Sphère', cylindre: 'Cylindre', cone: 'Cône', pyramide: 'Pyramide', tore: 'Anneau', plaque: 'Plaque' }[id], build, params: { s: id === 'plaque' ? 1.2 : 0.6 }, ranges: { s: [0.05, 6] }, labels: { s: 'Taille' } })),
+  ...Object.entries(formes).map(([id, build]) => ({ id, cat: 'Formes', name: { cube: 'Cube', sphere: 'Sphère', cylindre: 'Cylindre', cone: 'Cône', pyramide: 'Pyramide', tore: 'Anneau', plaque: 'Plaque' }[id], build, params: { s: id === 'plaque' ? 1.2 : 0.6 }, ranges: { s: [0.05, 60] }, labels: { s: 'Taille' } })),
   // Lumières
   { id: 'spot', cat: 'Lumières', name: 'Spot', build: spot, params: { angle: 0.5 }, ranges: { angle: [0.15, 1.2] }, labels: { angle: 'Faisceau' } },
   { id: 'neon', cat: 'Lumières', name: 'Néon', build: neon, params: { w: 1.2 }, ranges: { w: [0.3, 4] }, labels: { w: 'Longueur' } },
 ];
 
-export const CATEGORIES = ['Espaces', 'Mobilier', 'Personnages', 'Mode', 'Formes', 'Lumières'];
+export const CATEGORIES = ['Modeler', 'Formes', 'Paysages', 'Villes', 'Personnages', 'Mode', 'Espaces', 'Mobilier', 'Lumières'];
 export const getItem = id => CATALOG.find(c => c.id === id);

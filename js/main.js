@@ -41,6 +41,7 @@ const I = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
   bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+  sculpt: '<path d="M12 3c4 0 6 3 6 6 0 4-3 5-3 8v2H9v-2c0-3-3-4-3-8 0-3 2-6 6-6z"/><path d="M9 21h6"/><path d="M10 9c1 1 3 1 4 0"/>',
   camera: '<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
 };
 const svg = k => `<svg viewBox="0 0 24 24">${I[k] || ''}</svg>`;
@@ -58,8 +59,8 @@ window.atelier = engine; // pratique pour déboguer
 window.atelierDire = t => runActions(parseCommand(t)); // tester une commande vocale au clavier
 const isDisplay = location.hash === '#ecran' || new URLSearchParams(location.search).has('ecran');
 
-const ROLE_LABEL = { sol: 'Sol', mur: 'Murs', mobilier: 'Structure', textile: 'Tissu', metal: 'Métal', verre: 'Vitrage', corps: 'Corps', vetement: 'Vêtement' };
-const DEFAULT_ROLE = { piece: 'mur', sol: 'sol', estrade: 'sol', canape: 'textile', fauteuil: 'textile', lit: 'textile', tapis: 'textile', baie: 'verre', buste: 'textile' };
+const ROLE_LABEL = { forme: 'Matière', terrain: 'Terrain', roche: 'Roche', batiment: 'Façades', toit: 'Toit', trottoir: 'Trottoirs', route: 'Route', herbe: 'Herbe', marquage: 'Marquage', sol: 'Sol', mur: 'Murs', mobilier: 'Structure', textile: 'Tissu', metal: 'Métal', verre: 'Vitrage', corps: 'Corps', vetement: 'Vêtement' };
+const DEFAULT_ROLE = { quartier: 'batiment', immeuble: 'batiment', maison: 'batiment', tour: 'verre', route: 'route', piece: 'mur', sol: 'sol', estrade: 'sol', canape: 'textile', fauteuil: 'textile', lit: 'textile', tapis: 'textile', baie: 'verre', buste: 'textile' };
 
 /* ---------- toasts & bulles ---------- */
 let toastT;
@@ -140,7 +141,7 @@ async function toggleHands() {
     toast('Chargement du suivi des mains…', 6000);
     await hands.start(facing === 'user');
     $('#btnHands').classList.add('on'); updatePip(); setStatus();
-    toast('Mains actives : pointe avec l’index, appuie pour sélectionner', 3200);
+    toast('Mains actives : pointe avec l’index, reste pointé pour sélectionner', 3200);
     if (!sessionStorageGet('handsHelp')) { sessionStorageSet('handsHelp', 1); setTimeout(showHandsHelp, 600); }
   } catch (e) {
     console.error(e); toast(e.name === 'NotAllowedError' ? 'Caméra refusée : autorise-la dans Réglages → Safari → Caméra.' : 'Impossible de lancer le suivi des mains : ' + (e.message || e), 5000);
@@ -150,17 +151,17 @@ async function toggleHands() {
 function sessionStorageGet(k) { try { return sessionStorage.getItem('atelier:' + k); } catch { return null; } }
 function sessionStorageSet(k, v) { try { sessionStorage.setItem('atelier:' + k, v); } catch { } }
 function showHandsHelp() {
-  openModal(`<h2>Créer avec une main</h2>
-    <p>Pose ton iPhone debout, à environ 50 cm, caméra face à toi. Une seule main suffit.</p>
+  openModal(`<h2>Créer avec les mains</h2>
+    <p>Pose l’iPhone debout, à environ 50 cm, caméra face à toi. Tes deux mains sont suivies séparément : tu peux viser d’une main et tourner la vue de l’autre. Seuls le pouce, l’index et le majeur comptent, les autres doigts sont ignorés.</p>
     <ul>
-      <li><b>Pointer</b> : tends l’index (les autres doigts repliés). Le curseur suit ton doigt, l’objet visé s’éclaire.</li>
-      <li><b>Sélectionner</b> : fais comme si tu appuyais dessus. Enfonce le doigt vers l’écran, ou plie-le et retends-le. Ça marche aussi sur les boutons.</li>
-      <li><b>Zoomer</b> : comme sur un téléphone, écarte le pouce et l’index pour zoomer, rapproche-les pour dézoomer. Si un objet est sélectionné, c’est lui qui grandit ou rétrécit.</li>
+      <li><b>Pointer</b> : index tendu, majeur replié. Le curseur suit ton index, ce que tu vises s’éclaire.</li>
+      <li><b>Sélectionner</b> : reste pointé sur la cible, l’anneau se remplit et ça sélectionne. Pour aller plus vite, pousse le doigt vers l’écran, comme pour appuyer. Ça marche aussi sur les boutons.</li>
+      <li><b>Zoomer</b> : comme sur un téléphone, écarte ou rapproche pouce et index. Objet sélectionné : il grandit ou rétrécit.</li>
       <li><b>Tourner la vue</b> : main ouverte, balaie à gauche, à droite, en haut ou en bas.</li>
-      <li><b>Pivoter un objet</b> : objet sélectionné, main ouverte, tourne le poignet comme un bouton de volume.</li>
-      <li><b>Déplacer</b> : un objet sélectionné, ferme le poing, bouge, puis rouvre la main pour le lâcher.</li>
+      <li><b>Pivoter l’objet</b> : main ouverte, tourne le poignet comme un bouton de volume.</li>
+      <li><b>Déplacer</b> : ferme le poing, bouge, rouvre la main pour lâcher.</li>
+      <li><b>Modeler</b> : en mode Modeler, pousse le doigt dans la matière et garde-le enfoncé en bougeant.</li>
     </ul>
-    <p>Appuyer dans le vide désélectionne. Combine avec la voix : « ajoute un canapé en velours vert ».</p>
     <div class="row"><button class="btn" data-close>C’est parti</button></div>`);
 }
 
@@ -220,13 +221,15 @@ function runActions(acts) {
       case 'lift': if (s) { s.position.y = Math.max(0, s.position.y + a.value); engine.commit(); out.push(a.value > 0 ? 'Monté' : 'Descendu'); } break;
       case 'nudge': if (s) { const az = engine.orbit.az; const f = new THREE.Vector3(-Math.sin(az), 0, -Math.cos(az)), r = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az)); s.position.addScaledVector(r, a.value[0]).addScaledVector(f, a.value[1]); engine.commit(); out.push('Déplacé'); } break;
       case 'suggest': suggest(); out.push('Propositions'); break;
+      case 'sculpt': if (s && engine.sculptor.canSculpt(s)) { setSculpt(true); out.push('Modelage'); } else out.push('Sélectionne une forme à modeler'); break;
+      case 'tool': if (!engine.sculptor.active && s && engine.sculptor.canSculpt(s)) setSculpt(true); engine.sculptor.tool = a.value; window._sculptRefresh?.(); out.push('Outil ' + a.value); break;
     }
   }
   return out.join(' · ');
 }
 const matName = id => id.startsWith('#') ? (PAINTS.find(p => '#' + p[1].toString(16).padStart(6, '0') === id)?.[0] || 'Couleur ' + id) : getMaterialDef(id)?.name || id;
 function rolesOf(g) { const r = new Set(); g.traverse(o => { if (o.isMesh && ROLE_LABEL[o.userData.role]) r.add(o.userData.role); }); return [...r]; }
-function mainRole(g) { const rs = rolesOf(g); const d = DEFAULT_ROLE[g.userData.type]; if (d && rs.includes(d)) return d; for (const r of ['vetement', 'textile', 'mobilier', 'mur', 'sol', 'corps', 'metal', 'verre']) if (rs.includes(r)) return r; return rs[0]; }
+function mainRole(g) { const rs = rolesOf(g); const d = DEFAULT_ROLE[g.userData.type]; if (d && rs.includes(d)) return d; for (const r of ['forme', 'terrain', 'roche', 'batiment', 'vetement', 'textile', 'mobilier', 'mur', 'sol', 'corps', 'metal', 'verre', 'route']) if (rs.includes(r)) return r; return rs[0]; }
 
 /* ---------- vignettes 3D des éléments ---------- */
 const itemThumbs = {};
@@ -250,7 +253,9 @@ async function renderItemThumbs(ids) {
     const dist = R / Math.sin(THREE.MathUtils.degToRad(15)) * 0.95;
     const dir = new THREE.Vector3(0.9, getItem(id).cat === 'Espaces' ? 0.95 : 0.5, 1.15).normalize();
     cam.position.copy(c).addScaledVector(dir, dist); cam.lookAt(c);
-    key.target.position.copy(c); key.position.copy(c).add(new THREE.Vector3(3, 6, 4)); sc.add(key.target);
+    cam.near = Math.max(0.01, dist / 200); cam.far = dist * 4; cam.updateProjectionMatrix();
+    key.shadow.camera.far = dist * 6;
+    key.target.position.copy(c); key.position.copy(c).add(new THREE.Vector3(3, 6, 4).multiplyScalar(Math.max(1, R))); sc.add(key.target);
     key.shadow.camera.left = key.shadow.camera.bottom = -R * 2; key.shadow.camera.right = key.shadow.camera.top = R * 2; key.shadow.camera.updateProjectionMatrix();
     r.render(sc, cam);
     itemThumbs[id] = r.domElement.toDataURL('image/png');
@@ -261,8 +266,8 @@ async function renderItemThumbs(ids) {
 let matThumbs = {};
 
 /* ---------- bibliothèque ---------- */
-const TABS = [...CATEGORIES.slice(0, 5), 'Lumières', 'Matières', 'Styles'];
-let tab = 'Espaces';
+const TABS = [...CATEGORIES, 'Matières', 'Styles'];
+let tab = 'Modeler';
 const AMB = [['jour', 'Jour'], ['doree', 'Heure dorée'], ['soir', 'Soir'], ['studio', 'Studio'], ['galerie', 'Galerie']];
 function renderTabs() {
   $('#tabs').innerHTML = TABS.map(t => `<button class="tab ${t === tab ? 'on' : ''}" data-tab="${t}">${t}</button>`).join('');
@@ -308,7 +313,10 @@ async function renderTray() {
   if (tab === 'Lumières') {
     html += AMB.map(([k, n]) => `<button class="card wide ${engine.ambiance === k ? 'on' : ''}" data-amb="${k}" style="flex-basis:120px"><div class="ttl">${n}</div><div class="dsc">${{ jour: 'Lumière naturelle, ombres nettes.', doree: 'Soleil bas, chaud et rasant.', soir: 'Nuit, les lampes prennent le relais.', studio: 'Neutre et doux, pour présenter.', galerie: 'Blanc froid, éclairage zénithal.' }[k]}</div></button>`).join('') + '<span class="sep"></span>';
   }
-  if (tab === 'Espaces') html += TEMPLATES.slice(0, 2).map(T => `<button class="card wide" data-tpl="${T.id}" style="flex-basis:150px"><div class="ttl">${T.name}</div><div class="dsc">${T.desc}</div></button>`).join('') + '<span class="sep"></span>';
+  const tplCard = id => { const T = TEMPLATES.find(t => t.id === id); return `<button class="card wide" data-tpl="${T.id}" style="flex-basis:150px"><div class="ttl">${T.name}</div><div class="dsc">${T.desc}</div></button>`; };
+  if (tab === 'Paysages') html += tplCard('paysage') + '<span class="sep"></span>';
+  if (tab === 'Villes') html += tplCard('ville') + '<span class="sep"></span>';
+  if (tab === 'Espaces') html += TEMPLATES.filter(t => ['salon', 'chambre'].includes(t.id)).map(T => `<button class="card wide" data-tpl="${T.id}" style="flex-basis:150px"><div class="ttl">${T.name}</div><div class="dsc">${T.desc}</div></button>`).join('') + '<span class="sep"></span>';
   if (tab === 'Mode') html += `<button class="card wide" data-tpl="showroom" style="flex-basis:150px"><div class="ttl">Showroom</div><div class="dsc">Estrade, silhouettes habillées, portants et spots.</div></button><span class="sep"></span>`;
   html += items.map(c => card(c.id, c.name, itemThumbs[c.id])).join('');
   tray.innerHTML = html;
@@ -318,7 +326,8 @@ async function renderTray() {
     const def = getItem(c.dataset.id);
     const g = engine.add(c.dataset.id);
     if (def.garment && !(engine.selected && engine.selected !== g)) toast('Astuce : sélectionne d’abord un personnage pour l’habiller');
-    if (def.id === 'piece') engine.frameAll();
+    if (def.id === 'piece' || def.big) engine.frameAll();
+    else if (def.sculpt) engine.focus(g);
   });
   const missing = items.filter(c => !itemThumbs[c.id]).map(c => c.id);
   if (missing.length) { await renderItemThumbs(missing); if (tab === items[0]?.cat) renderTray(); }
@@ -421,11 +430,16 @@ new ResizeObserver(updateInset).observe($('#selPanel'));
 new ResizeObserver(updateInset).observe($('#sheet'));
 window.addEventListener('resize', updateInset);
 $('#sheet').addEventListener('transitionend', updateInset);
+let lastSel = null;
 engine.addEventListener('selection', e => {
   const g = e.detail.object;
   if (window.innerWidth < 900 && !isDisplay) { if (g && tab !== 'Matières') setSheet(true); else if (!g && !sheetUser) setSheet(false); }
   $('#selPanel').hidden = !g || isDisplay;
   $('#params').hidden = true; $('[data-act=params]').classList.remove('on');
+  const canSc = !!g && engine.sculptor.canSculpt(g);
+  if (engine.sculptor.active && (!canSc || g !== lastSel)) setSculpt(false);
+  lastSel = g;
+  $('[data-act=sculpt]').hidden = !canSc; $('[data-act=focus]').hidden = canSc;
   if (!g) { $('#matDetail').hidden = true; if (tab === 'Matières') renderTray(); return; }
   $('#selName').textContent = getItem(g.userData.type)?.name || 'Élément';
   ui.showDims(); renderParts();
@@ -435,6 +449,7 @@ $('#selClose').onclick = () => engine.setSelection(null);
 $$('.sel-tools button').forEach(b => b.onclick = () => {
   const s = engine.selected; if (!s) return;
   switch (b.dataset.act) {
+    case 'sculpt': setSculpt(true); break;
     case 'material': tab = 'Matières'; renderTabs(); renderTray(); setSheet(false); break;
     case 'params': { const p = $('#params'); p.hidden = !p.hidden; b.classList.toggle('on', !p.hidden); if (!p.hidden) renderParams(); break; }
     case 'rotate': s.rotation.y -= Math.PI / 4; engine.commit(); ui.showDims(); break;
@@ -444,12 +459,55 @@ $$('.sel-tools button').forEach(b => b.onclick = () => {
   }
 });
 
+/* ---------- modelage ---------- */
+import('./sculpt.js').then(({ TOOLS }) => {
+  const sc = engine.sculptor;
+  $('#sculptTools').innerHTML = TOOLS.map(t => `<button class="chip" data-tool="${t.id}">${t.name}</button>`).join('');
+  const refresh = () => {
+    $$('#sculptTools .chip').forEach(c => c.classList.toggle('on', c.dataset.tool === sc.tool));
+    $('#scSym').classList.toggle('on', sc.sym);
+    $('#scHint').textContent = TOOLS.find(t => t.id === sc.tool).hint;
+    $('#scRadiusO').textContent = sc.radius < 1 ? Math.round(sc.radius * 100) + ' cm' : sc.radius.toFixed(1).replace('.', ',') + ' m';
+    $('#scForceO').textContent = Math.round(sc.strength * 100) + ' %';
+  };
+  $$('#sculptTools .chip').forEach(c => c.onclick = () => { sc.tool = c.dataset.tool; refresh(); });
+  $('#scSym').onclick = () => { sc.sym = !sc.sym; refresh(); };
+  const rr = $('#scRadius'), ff = $('#scForce');
+  rr.oninput = () => { sc.radius = +rr.value * rr._k; refresh(); };
+  ff.oninput = () => { sc.strength = +ff.value; refresh(); };
+  $('#scDone').onclick = () => setSculpt(false);
+  window._sculptRefresh = () => {
+    // la taille du pinceau suit la taille de l'objet (une boule de 70 cm ou une montagne de 300 m)
+    const s = engine.selected; if (!s) return;
+    const size = new THREE.Box3().setFromObject(s).getSize(new THREE.Vector3()); const big = Math.max(size.x, size.y, size.z);
+    rr._k = big; rr.value = (sc.radius / big).toFixed(2);
+    if (sc.radius > big * 0.9 || sc.radius < big * 0.02) { sc.radius = big * 0.18; rr.value = 0.18; }
+    ff.value = sc.strength; refresh();
+  };
+});
+function setSculpt(on) {
+  const sc = engine.sculptor;
+  if (on && !(engine.selected && sc.canSculpt(engine.selected))) on = false;
+  sc.active = on; sc.showBrush(null);
+  $('#sculptBar').hidden = !on;
+  $('.sel-tools').hidden = on; $('#selParts').hidden = on; $('#params').hidden = true;
+  $('[data-act=params]').classList.remove('on');
+  document.body.classList.toggle('sculpting', on);
+  if (on) { window._sculptRefresh?.(); setSheet(true); engine.focus(engine.selected, 3.2); toast('Glisse le doigt sur la matière pour la modeler', 2600); }
+  updateInset();
+}
+
 /* ---------- feuille ---------- */
 $('#sheetHandle').onclick = () => { const c = !$('#sheet').classList.contains('collapsed'); sheetUser = c; setSheet(c); };
 
 /* ---------- modèles (pièces composées) ---------- */
 const P2 = Math.PI / 2;
 const TEMPLATES = [
+  { id: 'sculpture', name: 'Boule d’argile', desc: 'Une sphère blanche à modeler, dans le studio vide.', palette: 'japandi', ambiance: 'studio', items: [['argile', { s: 0.7 }, [0, 0, 0]]] },
+  { id: 'paysage', name: 'Paysage', desc: 'Collines, lac, forêt et rochers, à remodeler.', palette: 'japandi', ambiance: 'jour', items: [
+    ['terrain', { taille: 170, relief: 30, variante: 4 }], ['eau', { taille: 50 }, [18, 0.6, 22]], ['foret', { taille: 60, densite: 70, variante: 2 }, [-45, 0, -30]],
+    ['rocher', { s: 4, variante: 3 }, [8, 0, 40]], ['rocher', { s: 2.5, variante: 7 }, [14, 0, 44]], ['arbre', { h: 11 }, [-5, 0, 30]], ['pin', { h: 14 }, [30, 0, -10]]] },
+  { id: 'ville', name: 'Ville', desc: 'Un quartier généré, rues et îlots, façon maquette.', palette: 'atelier', ambiance: 'studio', items: [['quartier', { blocs: 5, hauteur: 14, variante: 3 }], ['tour', { w: 24, etages: 42 }, [0, 0, 0]]] },
   { id: 'salon', name: 'Salon', desc: 'Pièce de 6 × 4,5 m meublée, prête à retoucher.', palette: 'japandi', items: [
     ['piece', { w: 6, d: 4.5, h: 2.8 }], ['tapis', { w: 2.6, d: 1.8 }, [0, 0, 0.1]], ['canape', { w: 2.3, places: 3 }, [0, 0, -1.35]],
     ['table', { w: 1.1, d: 0.6, h: 0.38 }, [0, 0, 0.2]], ['fauteuil', {}, [1.75, 0, 0.35], -P2], ['lampe', {}, [-1.75, 0, -1.6]], ['plante', { h: 1.5 }, [2.55, 0, -1.8]],
@@ -469,11 +527,26 @@ const TEMPLATES = [
     ['cube', { s: 0.9 }, [0, 0, -2.2], 0, { mobilier: 'enduit' }], ['tore', { s: 0.7 }, [0, 0.9, -2.2], 0, { mobilier: 'laiton' }], ['cube', { s: 0.7 }, [-3.6, 0, -2.4], 0, { mobilier: 'marbre-noir' }], ['sphere', { s: 0.55 }, [-3.6, 0.7, -2.4], 0, { mobilier: 'cuivre' }],
     ['colonne', { h: 3.6, r: 0.25 }, [3.8, 0, -2.6]], ['perso-pense', {}, [-0.9, 0, -0.9], 2.6], ['perso-debout', { taille: 1.68 }, [1.3, 0, 2.1], -2.6], ['spot', { angle: 0.35 }, [0, 0.9, -2.2]], ['spot', { angle: 0.35 }, [-3.6, 0.9, -2.4]]] },
 ];
+function dropOnGround() {
+  engine.content.updateMatrixWorld(true);
+  for (const g of engine.content.children) {
+    const t = getItem(g.userData.type); if (t?.sculpt && g.userData.type !== 'rocher') continue;
+    if (g.userData.type === 'eau') { g.position.y = engine.groundY(g.position.x, g.position.z, g) + 0.8; continue; } // le lac remplit le creux
+    if (g.userData.type === 'foret') { g.children.forEach(tr => { const w = tr.getWorldPosition(new THREE.Vector3()); tr.position.y = engine.groundY(w.x, w.z, g) - g.position.y; }); continue; }
+    g.position.y = engine.groundY(g.position.x, g.position.z, g);
+  }
+}
+
 function loadTemplate(id, { quiet = false } = {}) {
   const T = TEMPLATES.find(t => t.id === id); if (!T) return;
   engine.clear(false);
   if (T.palette) engine.palette = { ...engine.palette, ...PALETTES.find(p => p.id === T.palette).map };
-  for (const [type, params, pos, rotY, mats, scale] of T.items) engine.add(type, { params, pos: pos || [0, 0, 0], rotY: rotY ?? 0, mats, scale, silent: true });
+  for (const [type, params, pos, rotY, mats, scale] of T.items) {
+    const g = engine.add(type, { params, pos: pos || [0, 0, 0], rotY: rotY ?? 0, mats, scale, silent: true });
+    // les éléments posés sur un relief suivent le sol
+    if (g && pos && pos[1] > 0 && pos[1] < 1) g.position.y = 0;
+  }
+  if (T.id === 'paysage') dropOnGround();
   engine.setAmbiance(T.ambiance || 'jour', false);
   engine.setSelection(null); engine.commit(); engine.frameAll();
   if (!quiet) toast(T.name + ' composé : touche un élément pour le modifier');
@@ -592,7 +665,8 @@ async function setBackdrop(v) {
 function showHelp() {
   openModal(`<h2>Mode d’emploi</h2>
     <h3>Au doigt</h3><ul><li><b>Touche</b> un élément pour le sélectionner, puis <b>glisse-le</b> pour le déplacer.</li><li><b>Deux doigts</b> sur un élément sélectionné : agrandir et pivoter. Sans sélection : zoomer et déplacer la vue.</li><li><b>Un doigt dans le vide</b> : tourner autour de la scène.</li><li>Touche une <b>partie</b> précise (le tissu d’un canapé, le sol d’une pièce) pour lui donner une matière.</li></ul>
-    <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : une seule main. Index tendu pour pointer, geste d’appui pour sélectionner, pouce + index qui s’écartent pour zoomer (ou agrandir l’objet sélectionné), main ouverte qui balaie pour tourner, poignet qui tourne pour pivoter l’objet, poing fermé pour le déplacer.</li></ul>
+    <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : deux mains indépendantes. Index tendu pour pointer, rester pointé ou pousser le doigt pour sélectionner, pouce + index pour zoomer (ou agrandir l’objet sélectionné), main ouverte pour tourner, poignet pour pivoter, poing pour déplacer.</li>
+      <li><b>Modeler</b> : sélectionne une forme d’argile, un rocher ou un terrain, puis <b>Modeler</b>. Glisse le doigt sur la matière : gonfler, creuser, étirer, lisser, aplatir, pincer, avec symétrie.</li></ul>
     <h3>À la voix</h3><ul><li>« Crée une pièce de 6 sur 4 », « ajoute un canapé », « en velours vert », « le sol en marbre noir »</li><li>« Plus grand », « tourne », « duplique », « supprime », « annule »</li><li>« Ambiance soir », « style Riviera », « propose-moi quelque chose », « visite »</li></ul>
     <h3>Écran lié</h3><p>Sur l’ordi, ouvre l’adresse d’Atelier suivie de <span class="kbd">#ecran</span>. Un code s’affiche : tape-le dans ${svg('screen').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} sur l’iPhone. Tout ce que tu crées s’affiche en direct.</p>
     <h3>Installer</h3><p>Dans Safari : bouton Partager → <b>Sur l’écran d’accueil</b>. Atelier s’ouvre alors en plein écran comme une vraie appli.</p>
@@ -669,8 +743,8 @@ $('#btnMenu').onclick = openMenu;
 /* ---------- démarrage ---------- */
 function welcome() {
   openModal(`<div class="logo big" style="font-size:52px">Atelier</div>
-    <p style="margin-top:10px">Crée des pièces, des maisons, des scènes et des vêtements en 3D, <b>au doigt, à la main ou à la voix</b>. Pose des matières réelles, mets en lumière, visite, puis envoie ta création à qui tu veux.</p>
-    <p>Un salon t’attend pour commencer : touche un élément pour le modifier, ou pioche dans la bibliothèque en bas.</p>
+    <p style="margin-top:10px">Un studio blanc, sans limite. Modèle la matière comme de l’argile, fais naître des paysages, des villes, des personnages, des vêtements… <b>au doigt, à la main ou à la voix</b>.</p>
+    <p>Une boule d’argile t’attend : touche-la, puis <b>Modeler</b> pour la travailler. Tout le reste est dans la bibliothèque en bas.</p>
     <div class="row"><button class="btn" data-close>Entrer dans l’atelier</button><button class="btn ghost" id="wHelp">Mode d’emploi</button></div>
     <p style="font-size:12px;color:rgba(239,234,225,.38);margin-top:16px">En continuant, tu acceptes les <a class="link" href="#" data-legal="cgu">CGU</a>. La caméra et le micro ne seront activés qu’avec ton accord. <a class="link" href="#" data-legal="mentions">Mentions légales</a> · <a class="link" href="#" data-legal="confidentialite">Confidentialité</a> · <a class="link" href="#" data-legal="pi">Propriété intellectuelle</a></p>`, root => {
     root.querySelector('#wHelp').onclick = showHelp;
@@ -683,8 +757,8 @@ else {
   setupInput(engine, $('#scene'), ui);
   renderTabs(); renderTray();
   const saved = restore();
-  if (saved && saved.items?.length) { try { engine.load(saved, { record: false }); engine.history = [JSON.stringify(engine.serialize())]; } catch { loadTemplate('salon', { quiet: true }); } }
-  else loadTemplate('salon', { quiet: true });
+  if (saved && saved.items?.length) { try { engine.load(saved, { record: false }); engine.history = [JSON.stringify(engine.serialize())]; } catch { loadTemplate('sculpture', { quiet: true }); } }
+  else loadTemplate('sculpture', { quiet: true });
   engine.dispatchEvent(new Event('change'));
   let first = true; try { first = !localStorage.getItem('atelier:seen'); localStorage.setItem('atelier:seen', '1'); } catch { }
   if (first) welcome();

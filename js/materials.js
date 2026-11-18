@@ -236,9 +236,38 @@ function rattan(base) {
   });
 }
 
+function clay(base) {
+  const A = hex(base);
+  return paint(512, (u, v) => {
+    const n = N.fbm(u * 6, v * 6, 5, 6) * 0.05, prints = N2.noise(u * 40, v * 40, 40) * 0.02;
+    const k = 1 + n + prints;
+    return [A[0] * k, A[1] * k, A[2] * k, 0.5 + n * 3 + prints * 4];
+  });
+}
+function grass() {
+  return paint(512, (u, v) => {
+    const n = N.fbm(u * 6, v * 6, 5, 6), blades = N2.noise(u * 220, v * 60, 256);
+    const dry = N2.fbm(u * 2, v * 2, 3, 2) > 0.2 ? 0.25 : 0;
+    const g = [62 + dry * 120, 92 + dry * 60, 44 + dry * 20];
+    const k = 1 + n * 0.25 + blades * 0.12;
+    return [g[0] * k, g[1] * k, g[2] * k, 0.5 + blades * 0.4];
+  });
+}
+function asphalt() {
+  return paint(512, (u, v) => {
+    const n = N.fbm(u * 8, v * 8, 5, 8) * 0.12, grain = N2.noise(u * 300, v * 300, 256) * 0.1;
+    const k = 52 * (1 + n + grain);
+    return [k, k, k * 1.02, 0.5 + grain * 2];
+  });
+}
+
 /* ---------- catalogue ---------- */
 // cat : sol, mur, mobilier, textile, metal, verre
 export const MATERIALS = [
+  { id: 'argile', name: 'Argile blanche', cat: 'Argile', desc: 'Terre à modeler blanche, mate, légèrement marquée par les doigts.', tex: () => clay(0xEEEAE3), rough: 0.88, world: 0.8 },
+  { id: 'argile-grise', name: 'Argile grise', cat: 'Argile', desc: 'Grès gris brut, l’aspect d’une sculpture en cours.', tex: () => clay(0x9A958D), rough: 0.9, world: 0.8 },
+  { id: 'terre-cuite', name: 'Terre cuite', cat: 'Argile', desc: 'Argile rouge cuite, chaude et mate.', tex: () => clay(0xB0654A), rough: 0.85, world: 0.8 },
+  { id: 'bronze', name: 'Bronze patiné', cat: 'Argile', desc: 'Bronze de fonderie, patine sombre, reflets dorés.', tex: () => brushed(0x6E5236), rough: 0.38, metal: 1, world: 0.8 },
   { id: 'chene', name: 'Chêne clair', cat: 'Bois', desc: 'Parquet chêne huilé, lames larges, veinage naturel.', tex: () => wood(0xD2B08A, 0xA37E58), rough: 0.62, world: 2.2 },
   { id: 'noyer', name: 'Noyer', cat: 'Bois', desc: 'Noyer américain, chaud et profond, finition satinée.', tex: () => wood(0x7B5338, 0x4A2E1D, { grain: 6 }), rough: 0.5, world: 2.2 },
   { id: 'chene-fume', name: 'Chêne fumé', cat: 'Bois', desc: 'Chêne fumé brossé, tonalité brun-gris contemporaine.', tex: () => wood(0x75665A, 0x4E4239, { grain: 8 }), rough: 0.66, world: 2.2 },
@@ -249,6 +278,10 @@ export const MATERIALS = [
   { id: 'marbre-noir', name: 'Nero Marquina', cat: 'Minéral', desc: 'Marbre noir veiné de blanc, très graphique.', tex: () => marble(0x17171B, 0xE8E6E1, { sharp: 12 }), rough: 0.1, world: 1.6 },
   { id: 'travertin', name: 'Travertin', cat: 'Minéral', desc: 'Pierre beige alvéolée, strates douces, méditerranéen.', tex: () => stone(0xD5C3A5), rough: 0.7, world: 1.8 },
   { id: 'terrazzo', name: 'Terrazzo', cat: 'Minéral', desc: 'Liant clair et éclats de marbre colorés.', tex: () => terrazzo(0xE6E1D8, [0xB06A4F, 0x6E7C6A, 0x2A2A2A, 0xC9B79C, 0xF4F1EA]), rough: 0.3, world: 1.6 },
+  { id: 'roche', name: 'Granit', cat: 'Minéral', desc: 'Roche grise grenue, naturelle.', tex: () => stone(0x8A8782), rough: 0.85, world: 2 },
+  { id: 'herbe', name: 'Herbe', cat: 'Nature', desc: 'Pelouse dense, quelques zones sèches.', tex: () => grass(), rough: 1, world: 4 },
+  { id: 'sable', name: 'Sable', cat: 'Nature', desc: 'Sable fin et clair.', tex: () => concrete(0xD8C6A2, { spots: false }), rough: 1, world: 3 },
+  { id: 'asphalte', name: 'Asphalte', cat: 'Nature', desc: 'Enrobé routier gris anthracite.', tex: () => asphalt(), rough: 0.9, world: 4 },
   { id: 'brique', name: 'Brique', cat: 'Minéral', desc: 'Brique de terre cuite nuancée, joints chaux.', tex: () => brick(0x9A4E35, 0xCFC6B8), rough: 0.85, world: 1.6 },
   { id: 'enduit', name: 'Enduit chaux', cat: 'Mur', desc: 'Enduit à la chaux taloché, mat, lumière douce.', tex: () => plaster(0xEAE4D8), rough: 0.95, world: 3 },
   { id: 'enduit-terre', name: 'Enduit terre', cat: 'Mur', desc: 'Argile ocre rosée, chaleureux et mat.', tex: () => plaster(0xC79B7E), rough: 0.95, world: 3 },
@@ -281,6 +314,7 @@ export const PAINTS = [
 ];
 
 export const PALETTES = [
+  { id: 'atelier', name: 'Atelier blanc', desc: 'Tout en plâtre et argile blanche, comme une maquette d’atelier.', map: { sol: 'platre', mur: 'platre', mobilier: 'platre', textile: 'platre', metal: 'platre', corps: 'platre', vetement: 'platre', forme: 'argile', batiment: 'platre', toit: 'platre', trottoir: 'platre', route: 'argile-grise', herbe: 'platre', roche: 'argile', terrain: 'argile' } },
   { id: 'japandi', name: 'Japandi', desc: 'Chêne clair, lin, enduit chaux. Calme et lumineux.', map: { sol: 'chene', mur: 'enduit', mobilier: 'chene', textile: 'lin', metal: 'acier-noir', corps: 'mannequin', vetement: 'lin' } },
   { id: 'loft', name: 'Loft industriel', desc: 'Béton brut, acier noir, cuir cognac.', map: { sol: 'beton-cire', mur: 'brique', mobilier: 'acier-noir', textile: 'cuir-cognac', metal: 'acier-noir', corps: 'mannequin-noir', vetement: 'denim' } },
   { id: 'riviera', name: 'Riviera', desc: 'Travertin, laiton, velours rouille.', map: { sol: 'travertin', mur: 'enduit-terre', mobilier: 'noyer', textile: 'velours-rouille', metal: 'laiton', corps: 'mannequin', vetement: 'lin' } },
@@ -290,13 +324,16 @@ export const PALETTES = [
 ];
 
 const cache = new Map();
-export function getMaterialDef(id) { return MATERIALS.find(m => m.id === id); }
+export function getMaterialDef(id) { return MATERIALS.find(m => m.id === id) || (id === 'terrain' ? { id, name: 'Terrain naturel', cat: 'Nature', desc: 'Couleurs selon l’altitude et la pente.' } : null); }
 
 // Matériau partagé par id (les textures sont générées une seule fois)
 export function material(id) {
   if (cache.has(id)) return cache.get(id);
   let m;
-  if (id && id.startsWith('#')) {
+  if (id === 'terrain') {
+    m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+    m.userData.world = 1;
+  } else if (id && id.startsWith('#')) {
     m = new THREE.MeshStandardMaterial({ color: new THREE.Color(id), roughness: 0.85 });
   } else {
     const d = getMaterialDef(id) || getMaterialDef('enduit');
