@@ -48,7 +48,12 @@ for (const [id, k] of [['btnUndo', 'undo'], ['btnRedo', 'redo'], ['btnHands', 'h
 $$('[data-i]').forEach(el => el.innerHTML = svg(el.dataset.i));
 
 /* ---------- moteur ---------- */
-const engine = new Engine($('#scene'));
+let engine;
+try { engine = new Engine($('#scene')); }
+catch (e) {
+  document.body.innerHTML = `<div style="position:fixed;inset:0;display:grid;place-content:center;text-align:center;padding:32px;gap:10px;font-family:var(--sans)"><div class="logo big" style="font-size:52px">Atelier</div><p style="color:rgba(239,234,225,.7);max-width:420px">Ce navigateur n’a pas accès à la 3D (WebGL désactivé ou indisponible). Ouvre Atelier dans Safari sur iPhone ou iPad, ou dans Chrome / Edge à jour sur ordinateur.</p></div>`;
+  throw e;
+}
 window.atelier = engine; // pratique pour déboguer
 window.atelierDire = t => runActions(parseCommand(t)); // tester une commande vocale au clavier
 const isDisplay = location.hash === '#ecran' || new URLSearchParams(location.search).has('ecran');
