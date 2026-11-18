@@ -4,15 +4,17 @@
 //  • POINTER  : index tendu (les autres doigts repliés) → le curseur suit le bout de l'index, l'objet visé s'illumine
 //  • APPUYER  : geste d'appui avec l'index (on « enfonce » le doigt vers l'écran, ou on le plie et le retend)
 //               → sélectionne l'objet visé, ou clique sur le bouton visé, ou désélectionne dans le vide
-//  • ZOOMER   : comme sur un téléphone, pouce + index qui s'écartent (zoom avant) ou se rapprochent (zoom arrière)
+//  • ZOOMER   : comme sur un téléphone, pouce + index qui s'écartent ou se rapprochent
+//               → agrandit / réduit l'objet sélectionné, ou zoome la vue si rien n'est sélectionné
 //  • TOURNER  : main ouverte, on balaie à gauche / à droite / en haut / en bas
+//  • PIVOTER  : objet sélectionné, main ouverte, on tourne le poignet comme un bouton de volume
 //  • DÉPLACER : poing fermé quand un objet est sélectionné → l'objet suit la main ; on rouvre la main pour le lâcher
 import * as THREE from 'three';
 
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
 const FINGERS = { index: [5, 6, 8], middle: [9, 10, 12], ring: [13, 14, 16], pinky: [17, 18, 20] };
-const LABEL = { point: '', zoom: 'Zoom', orbit: 'Rotation', grab: 'Déplacer' };
+const LABEL = { point: '', zoom: 'Zoom', scale: 'Taille', orbit: 'Rotation', twist: 'Pivoter', grab: 'Déplacer' };
 
 const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z - b.z) * 0.6);
 function angle(a, b, c) { // angle en degrés au point b
@@ -84,13 +86,14 @@ export class Hands {
     }
     const idxAngle = angle(lm[5], lm[6], lm[8]);
     const gap = d3(lm[4], lm[8]) / size;              // écart pouce-index
+    const thumbOut = d3(lm[4], lm[9]) / size > 0.7;   // pouce écarté de la paume (pas replié contre les doigts)
     const others = ext.middle + ext.ring + ext.pinky;
     let pose;
     if (others >= 3 && ext.index) pose = 'open';
     else if (others === 0 && !ext.index && idxAngle < 90) pose = 'fist';
     else if (others <= 1) pose = 'point';             // index (et éventuellement pouce) en avant
     else pose = 'other';
-    return { pose, size, gap, idxAngle };
+    return { pose, size, gap, idxAngle, thumbOut };
   }
 
   tick() {
@@ -142,15 +145,17 @@ export class Hands {
     const pos = s.pose === 'open' || s.pose === 'fist' ? P[9] : { x: s.x, y: s.y };
     c.classList.add('on');
     c.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+    const shown = s.mode === 'zoom' && this.engine.selected ? 'scale' : s.mode;
     c.dataset.mode = s.mode;
-    c.querySelector('.hc-label').textContent = LABEL[s.mode] || '';
+    c.querySelector('.hc-label').textContent = LABEL[shown] || '';
   }
 
   beginMode(pose, info, P) {
     const s = this.s;
     s.mode = { point: 'point', open: 'orbit', fist: 'grab' }[pose] || 'idle';
     s.gapHist = []; s.gapRef = null; s.dip = null; s.push = null; s.scaleHist = [];
-    if (pose === 'open') s.palm = { x: P[9].x, y: P[9].y };
+    s.wh = [];
+    if (pose === 'open') s.palm = null; // initialisé au premier passage (position + inclinaison de départ)
     if (pose === 'fist') {
       const e = this.engine;
       if (e.selected) {
@@ -165,7 +170,8 @@ export class Hands {
   endMode() {
     const s = this.s;
     if (s.mode === 'grab' && s.grabOff && s.grabMoved) this.engine.commit();
-    if (s.mode === 'zoom') s.mode = 'point';
+    if (s.mode === 'zoom') { if (s.scaled) { s.scaled = false; this.engine.commit(); } s.mode = 'point'; }
+    if (s.mode === 'twist') this.engine.commit();
     s.grabOff = null; s.palm = null;
   }
 
@@ -173,16 +179,24 @@ export class Hands {
   doPoint(info, now) {
     const s = this.s, e = this.engine;
     // --- zoom façon téléphone : l'écart pouce-index change vite alors que la main reste en place
-    s.gapHist.push({ t: now, g: info.gap }); while (s.gapHist.length && now - s.gapHist[0].t > 350) s.gapHist.shift();
+    s.gapHist.push({ t: now, g: info.gap, out: info.thumbOut }); while (s.gapHist.length && now - s.gapHist[0].t > 350) s.gapHist.shift();
     const g0 = s.gapHist[0].g, dg = info.gap - g0;
-    if (s.mode !== 'zoom' && !s.dip && !s.push && info.idxAngle > 140 && Math.abs(dg) > 0.32 && s.gapHist.length > 3) { s.mode = 'zoom'; s.gapRef = g0; e.setHover?.(null); } // on reprend depuis le début du geste
+    // écarter : le pouce doit être sorti ; rapprocher : il devait déjà être sorti au début du geste
+    // (ramener le pouce replié contre l'index ne déclenche donc pas de zoom arrière)
+    const zoomOk = dg > 0 ? info.thumbOut : s.gapHist[0].out;
+    if (s.mode !== 'zoom' && !s.dip && !s.push && zoomOk && info.idxAngle > 140 && Math.abs(dg) > 0.32 && s.gapHist.length > 3) { s.mode = 'zoom'; s.gapRef = g0; e.setHover?.(null); } // on reprend depuis le début du geste
     if (s.mode === 'zoom') {
       const prev = s.gapRef; s.gapRef = info.gap;
-      const f = (prev + 0.15) / (info.gap + 0.15); // écarter → on se rapproche
-      if (Math.abs(f - 1) > 0.002) { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(e.orbit.radius * f, 0.6, 120); }
+      const f = (prev + 0.15) / (info.gap + 0.15); // écarter → f < 1
+      if (Math.abs(f - 1) > 0.002) {
+        if (e.selected) { // objet sélectionné : il grandit ou rétrécit
+          const k = THREE.MathUtils.clamp(e.selected.scale.x / f, 0.05, 30) / e.selected.scale.x;
+          e.selected.scale.multiplyScalar(k); s.scaled = true; this.ui.showDims?.();
+        } else { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(e.orbit.radius * f, 0.6, 120); }
+      }
       // on sort du zoom quand l'écart ne bouge plus pendant un moment
       if (Math.abs(info.gap - (s.zoomLastGap ?? info.gap)) > 0.03) { s.zoomLastGap = info.gap; s.zoomLastMove = now; }
-      if (now - (s.zoomLastMove ?? now) > 450) { s.mode = 'point'; s.gapHist = []; s.zoomLastGap = null; s.zoomLastMove = null; }
+      if (now - (s.zoomLastMove ?? now) > 450) { if (s.scaled) { s.scaled = false; e.commit(); } s.mode = 'point'; s.gapHist = []; s.zoomLastGap = null; s.zoomLastMove = null; }
       else s.zoomLastMove ??= now;
       return;
     }
@@ -232,8 +246,25 @@ export class Hands {
 
   // main ouverte qui balaie : tourner autour de la scène
   doOrbit(P) {
-    const s = this.s, p = P[9];
+    const s = this.s, p = P[0], e = this.engine; // le poignet : il bouge quand on balaie, pas quand on tourne la main
+    const roll = Math.atan2(P[9].x - P[0].x, -(P[9].y - P[0].y)); // inclinaison de la main à l'écran
+    const now = performance.now();
+    s.wh = (s.wh || []).filter(h => now - h.t < 400); s.wh.push({ t: now, x: p.x, y: p.y, r: roll });
     if (!s.palm) { s.palm = { x: p.x, y: p.y }; return; }
+    // objet sélectionné + poignet qui tourne sans que la main se déplace : on pivote l'objet
+    if (e.selected && s.mode !== 'twist' && s.wh.length > 3) {
+      const h0 = s.wh[0];
+      let dr = roll - h0.r; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+      const drift = Math.max(...s.wh.map(h => Math.hypot(h.x - h0.x, h.y - h0.y)));
+      if (Math.abs(dr) > 0.3 && drift < 45) { s.mode = 'twist'; s.roll0 = h0.r; s.rot0 = e.selected.rotation.y; }
+    }
+    if (s.mode === 'twist' && e.selected) {
+      let dr = roll - s.roll0; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+      let r = s.rot0 - dr * 1.4; const step = Math.PI / 12, near = Math.round(r / step) * step; if (Math.abs(r - near) < 0.05) r = near;
+      e.selected.rotation.y = r; this.ui.showDims?.();
+      s.palm.x = p.x; s.palm.y = p.y;
+      return;
+    }
     const dx = p.x - s.palm.x, dy = p.y - s.palm.y;
     s.palm.x += dx * 0.6; s.palm.y += dy * 0.6;
     if (Math.hypot(dx, dy) > 0.8) this.engine.orbitBy(dx * 0.006, dy * 0.005);

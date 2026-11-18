@@ -155,8 +155,9 @@ function showHandsHelp() {
     <ul>
       <li><b>Pointer</b> : tends l’index (les autres doigts repliés). Le curseur suit ton doigt, l’objet visé s’éclaire.</li>
       <li><b>Sélectionner</b> : fais comme si tu appuyais dessus. Enfonce le doigt vers l’écran, ou plie-le et retends-le. Ça marche aussi sur les boutons.</li>
-      <li><b>Zoomer</b> : comme sur un téléphone, écarte le pouce et l’index pour zoomer, rapproche-les pour dézoomer.</li>
-      <li><b>Tourner</b> : main ouverte, balaie à gauche, à droite, en haut ou en bas.</li>
+      <li><b>Zoomer</b> : comme sur un téléphone, écarte le pouce et l’index pour zoomer, rapproche-les pour dézoomer. Si un objet est sélectionné, c’est lui qui grandit ou rétrécit.</li>
+      <li><b>Tourner la vue</b> : main ouverte, balaie à gauche, à droite, en haut ou en bas.</li>
+      <li><b>Pivoter un objet</b> : objet sélectionné, main ouverte, tourne le poignet comme un bouton de volume.</li>
       <li><b>Déplacer</b> : un objet sélectionné, ferme le poing, bouge, puis rouvre la main pour le lâcher.</li>
     </ul>
     <p>Appuyer dans le vide désélectionne. Combine avec la voix : « ajoute un canapé en velours vert ».</p>
@@ -591,7 +592,7 @@ async function setBackdrop(v) {
 function showHelp() {
   openModal(`<h2>Mode d’emploi</h2>
     <h3>Au doigt</h3><ul><li><b>Touche</b> un élément pour le sélectionner, puis <b>glisse-le</b> pour le déplacer.</li><li><b>Deux doigts</b> sur un élément sélectionné : agrandir et pivoter. Sans sélection : zoomer et déplacer la vue.</li><li><b>Un doigt dans le vide</b> : tourner autour de la scène.</li><li>Touche une <b>partie</b> précise (le tissu d’un canapé, le sol d’une pièce) pour lui donner une matière.</li></ul>
-    <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : une seule main. Index tendu pour pointer, geste d’appui pour sélectionner, pouce + index qui s’écartent pour zoomer, main ouverte qui balaie pour tourner, poing fermé pour déplacer.</li></ul>
+    <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : une seule main. Index tendu pour pointer, geste d’appui pour sélectionner, pouce + index qui s’écartent pour zoomer (ou agrandir l’objet sélectionné), main ouverte qui balaie pour tourner, poignet qui tourne pour pivoter l’objet, poing fermé pour le déplacer.</li></ul>
     <h3>À la voix</h3><ul><li>« Crée une pièce de 6 sur 4 », « ajoute un canapé », « en velours vert », « le sol en marbre noir »</li><li>« Plus grand », « tourne », « duplique », « supprime », « annule »</li><li>« Ambiance soir », « style Riviera », « propose-moi quelque chose », « visite »</li></ul>
     <h3>Écran lié</h3><p>Sur l’ordi, ouvre l’adresse d’Atelier suivie de <span class="kbd">#ecran</span>. Un code s’affiche : tape-le dans ${svg('screen').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} sur l’iPhone. Tout ce que tu crées s’affiche en direct.</p>
     <h3>Installer</h3><p>Dans Safari : bouton Partager → <b>Sur l’écran d’accueil</b>. Atelier s’ouvre alors en plein écran comme une vraie appli.</p>
