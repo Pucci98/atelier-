@@ -44,12 +44,18 @@ const I = {
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
   palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.2 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/>',
   send: '<path d="M4 12h15M13 6l6 6-6 6"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
+  anchor: '<circle cx="12" cy="5" r="2"/><path d="M12 7v14M5 13a7 7 0 0 0 14 0M8 11h8"/>',
+  chev: '<path d="m15 6-6 6 6 6"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  save: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8M8 21v-7h8v7"/>',
   code: '<path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>',
   sculpt: '<path d="M12 3c4 0 6 3 6 6 0 4-3 5-3 8v2H9v-2c0-3-3-4-3-8 0-3 2-6 6-6z"/><path d="M9 21h6"/><path d="M10 9c1 1 3 1 4 0"/>',
   camera: '<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
 };
 const svg = k => `<svg viewBox="0 0 24 24">${I[k] || ''}</svg>`;
-for (const [id, k] of [['btnUndo', 'undo'], ['btnRedo', 'redo'], ['btnHands', 'hand'], ['btnVoice', 'mic'], ['btnLink', 'screen'], ['btnShare', 'share'], ['btnMenu', 'menu'], ['selClose', 'close'], ['sheetClose', 'close'], ['cmdGo', 'send'], ['cmdClose', 'close']]) $('#' + id).innerHTML = svg(k);
+for (const [id, k] of [['btnUndo', 'undo'], ['btnRedo', 'redo'], ['btnHands', 'hand'], ['btnVoice', 'mic'], ['btnLink', 'screen'], ['btnShare', 'share'], ['btnMenu', 'menu'], ['selClose', 'close'], ['sheetClose', 'close'], ['cmdGo', 'send'], ['cmdClose', 'close'], ['insClose', 'close']]) $('#' + id).innerHTML = svg(k);
 $$('[data-i]').forEach(el => el.innerHTML = svg(el.dataset.i));
 
 /* ---------- moteur ---------- */
@@ -127,7 +133,10 @@ let stream = null, facing = 'user';
 async function startCamera() {
   if (stream) return stream;
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('Caméra indisponible sur ce navigateur.');
-  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
+  const camId = (() => { try { return localStorage.getItem('atelier:webcam'); } catch { return null; } })();
+  const video = camId ? { deviceId: { exact: camId }, width: { ideal: 960 }, height: { ideal: 720 } } : { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } };
+  try { stream = await navigator.mediaDevices.getUserMedia({ video, audio: false }); }
+  catch (e) { if (!camId) throw e; try { localStorage.removeItem('atelier:webcam'); } catch { } stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing }, audio: false }); }
   // si la caméra s'arrête toute seule, on la relance
   stream.getVideoTracks().forEach(t => t.addEventListener('ended', () => { if (hands?.active || engine.backdrop === 'camera') { stream = null; setTimeout(() => startCamera().catch(() => { }), 400); } }));
   for (const v of [$('#cam'), $('#pipVideo')]) { v.srcObject = stream; v.classList.toggle('mirror', facing === 'user'); try { await v.play(); } catch { } }
@@ -318,13 +327,14 @@ async function renderTray() {
   if (tab === 'Styles') {
     let html = `<button class="card wide" data-act="suggest"><div class="ttl">Propose-moi</div><div class="dsc">Une idée d’ambiance et ce qui manque à ta scène.</div><div class="dots">${svg('sparkle').replace('<svg', '<svg style="width:22px;height:22px;stroke:#E2C48E;fill:none;stroke-width:1.6"')}</div></button>`;
     for (const P of PALETTES) {
-      const dots = ['sol', 'mur', 'textile', 'metal'].map(r => `<i style="background-image:url(${matThumbs[P.map[r]] || ''});background-color:#555"></i>`).join('');
+      const dots = ['sol', 'mur', 'textile', 'metal'].map(r => `<i data-mat="${P.map[r]}" title="${getMaterialDef(P.map[r])?.name || ''}" style="background-image:url(${matThumbs[P.map[r]] || ''});background-color:#555"></i>`).join('');
       html += `<button class="card wide ${engine.palette.sol === P.map.sol && engine.palette.mur === P.map.mur ? 'on' : ''}" data-pal="${P.id}"><div class="ttl">${P.name}</div><div class="dsc">${P.desc}</div><div class="dots">${dots}</div></button>`;
     }
     html += '<span class="sep"></span><span class="group-label">Modèles</span>';
     for (const T of TEMPLATES) html += `<button class="card wide" data-tpl="${T.id}"><div class="ttl">${T.name}</div><div class="dsc">${T.desc}</div></button>`;
     tray.innerHTML = html;
     tray.querySelector('[data-act=suggest]').onclick = suggest;
+    tray.querySelectorAll('[data-mat]').forEach(d => d.onclick = ev => { ev.stopPropagation(); pickMaterial(d.dataset.mat); });
     tray.querySelectorAll('[data-pal]').forEach(c => c.onclick = () => { engine.applyPalette(c.dataset.pal); toast('Style ' + PALETTES.find(p => p.id === c.dataset.pal).name + ' appliqué'); renderTray(); });
     tray.querySelectorAll('[data-tpl]').forEach(c => c.onclick = () => { setSheet(true); loadTemplate(c.dataset.tpl); });
     if (!Object.keys(matThumbs).length) loadMatThumbs();
@@ -339,10 +349,12 @@ async function renderTray() {
   if (tab === 'Paysages') html += tplCard('paysage') + '<span class="sep"></span>';
   if (tab === 'Villes') html += tplCard('ville') + '<span class="sep"></span>';
   if (tab === 'Espaces') html += TEMPLATES.filter(t => ['salon', 'chambre'].includes(t.id)).map(T => `<button class="card wide" data-tpl="${T.id}" style="flex-basis:150px"><div class="ttl">${T.name}</div><div class="dsc">${T.desc}</div></button>`).join('') + '<span class="sep"></span>';
+  if (tab === 'Mode') html += `<button class="card wide" id="outfitBtn" style="flex-basis:150px"><div class="ttl">Propose une tenue</div><div class="dsc">Une silhouette complète et coordonnée sur le personnage sélectionné.</div></button>`;
   if (tab === 'Mode') html += `<button class="card wide" data-tpl="showroom" style="flex-basis:150px"><div class="ttl">Showroom</div><div class="dsc">Estrade, silhouettes habillées, portants et spots.</div></button><span class="sep"></span>`;
   html += items.map(c => card(c.id, c.name, itemThumbs[c.id])).join('');
   tray.innerHTML = html;
   tray.querySelectorAll('[data-amb]').forEach(c => c.onclick = () => { engine.setAmbiance(c.dataset.amb); renderTray(); });
+  $('#outfitBtn')?.addEventListener('click', () => { proposeOutfit(); setSheet(true); });
   tray.querySelectorAll('[data-tpl]').forEach(c => c.onclick = () => { setSheet(true); loadTemplate(c.dataset.tpl); });
   tray.querySelectorAll('.card[data-id]').forEach(c => c.onclick = () => {
     const def = getItem(c.dataset.id);
@@ -477,6 +489,7 @@ engine.addEventListener('selection', e => {
   updateInset();
   $('#params').hidden = true; $('[data-act=params]').classList.remove('on');
   const canSc = !!g && engine.sculptor.canSculpt(g);
+  if (g) $('[data-act=free]').classList.toggle('on', !!g.userData.free);
   if (engine.sculptor.active && (!canSc || g !== lastSel)) setSculpt(false);
   lastSel = g;
   $('[data-act=sculpt]').hidden = !canSc; $('[data-act=focus]').hidden = canSc;
@@ -496,6 +509,7 @@ $$('.sel-tools button').forEach(b => b.onclick = () => {
     case 'rotate': s.rotation.y -= Math.PI / 4; engine.commit(); ui.showDims(); break;
     case 'duplicate': engine.duplicate(s); break;
     case 'focus': engine.focus(s); break;
+    case 'free': s.userData.free = !s.userData.free; if (!s.userData.free) s.position.y = engine.groundY(s.position.x, s.position.z, s); else if (s.position.y < 0.01) s.position.y = 0.3; engine.commit(); b.classList.toggle('on', s.userData.free); toast(s.userData.free ? 'Détaché du sol : il se déplace librement dans l’espace' : 'Reposé au sol'); break;
     case 'delete': engine.remove(s); break;
   }
 });
@@ -512,7 +526,148 @@ $$('.dk').forEach(b => b.onclick = () => {
   else if (d === 'jarvis') openCmd(false);
   else if (d === 'frame') engine.frameAll();
   else if (d === 'walk') startWalk();
+  else if (d === 'calques') openInspector('calques');
+  else if (d === 'hide') setDock({ hidden: true });
 });
+$('#dockTab').onclick = () => setDock({ hidden: false });
+const dockPref = (() => { try { return JSON.parse(localStorage.getItem('atelier:dock')) || {}; } catch { return {}; } })();
+function setDock(p) {
+  Object.assign(dockPref, p);
+  document.body.classList.toggle('dock-right', dockPref.side === 'droite');
+  document.body.classList.toggle('dock-compact', !!dockPref.compact);
+  document.body.classList.toggle('dock-hidden', !!dockPref.hidden);
+  $('#dockTab').hidden = !dockPref.hidden;
+  try { localStorage.setItem('atelier:dock', JSON.stringify(dockPref)); } catch { }
+}
+setDock({});
+
+/* ---------- panneau latéral : calques, mon atelier, matière libre ---------- */
+let insTab = 'calques';
+function openInspector(t) { if (t) insTab = t; $('#inspector').classList.add('open'); $('#inspector').setAttribute('aria-hidden', 'false'); renderInspector(); }
+function closeInspector() { $('#inspector').classList.remove('open'); $('#inspector').setAttribute('aria-hidden', 'true'); }
+$('#insClose').onclick = closeInspector;
+$$('#insTabs .tab').forEach(b => b.onclick = () => { insTab = b.dataset.ins; renderInspector(); });
+// glisser depuis le bord droit pour ouvrir, vers la droite pour fermer
+(() => {
+  let sx = null, sy = 0, from = '';
+  addEventListener('touchstart', e => { const t = e.touches[0]; const open = $('#inspector').classList.contains('open'); if (!open && t.clientX > innerWidth - 22) { sx = t.clientX; sy = t.clientY; from = 'edge'; } else if (open && e.target.closest('#inspector')) { sx = t.clientX; sy = t.clientY; from = 'panel'; } else sx = null; }, { passive: true });
+  addEventListener('touchmove', e => { if (sx == null) return; const t = e.touches[0], dx = t.clientX - sx; if (Math.abs(t.clientY - sy) > 60) { sx = null; return; } if (from === 'edge' && dx < -40) { openInspector(); sx = null; } else if (from === 'panel' && dx > 70) { closeInspector(); sx = null; } }, { passive: true });
+})();
+engine.addEventListener('layers', () => { if (insTab === 'calques' && $('#inspector').classList.contains('open')) renderInspector(); });
+engine.addEventListener('selection', () => { if ($('#inspector').classList.contains('open') && insTab !== 'atelier') renderInspector(); });
+
+function renderInspector() {
+  $$('#insTabs .tab').forEach(b => b.classList.toggle('on', b.dataset.ins === insTab));
+  const box = $('#insBody');
+  if (insTab === 'calques') {
+    const cnt = id => engine.content.children.filter(g => g.userData.layer === id).length;
+    box.innerHTML = engine.layers.slice().reverse().map(l => `<div class="lay ${l.id === engine.activeLayer ? 'on' : ''}" data-l="${l.id}">
+        <button data-a="vis" class="${l.visible ? '' : 'off'}" title="Afficher / masquer">${svg('eye')}</button>
+        <button data-a="lock" class="${l.locked ? '' : 'off'}" title="Verrouiller">${svg('lock')}</button>
+        <input class="nm" value="${esc(l.name)}" maxlength="40" aria-label="Nom du calque">
+        <span class="ct">${cnt(l.id)}</span>
+        <button data-a="up" title="Monter">${svg('up')}</button><button data-a="down" title="Descendre">${svg('down')}</button>
+      </div>`).join('') + `<div class="ins-row"><button class="btn small" id="lyNew">+ Nouveau calque</button>
+      ${engine.selected ? '<button class="btn ghost small" id="lyMove">Mettre la sélection dans le calque actif</button>' : ''}
+      ${engine.layers.length > 1 ? '<button class="btn ghost small" id="lyDel">Supprimer le calque actif</button>' : ''}</div>
+      <p style="font-size:12px;color:var(--ink-3)">Le calque actif (encadré) reçoit les nouvelles créations. Masque un calque pour travailler sans être gêné, verrouille-le pour ne plus le toucher par erreur.</p>`;
+    box.querySelectorAll('.lay').forEach(row => {
+      const l = engine.layers.find(x => x.id === row.dataset.l);
+      row.onclick = e => { if (e.target.closest('button, input')) return; engine.activeLayer = l.id; renderInspector(); };
+      row.querySelector('.nm').onfocus = () => { engine.activeLayer = l.id; row.classList.add('on'); };
+      row.querySelector('.nm').onchange = e => { l.name = e.target.value.trim().slice(0, 40) || l.name; engine.commit(); };
+      row.querySelectorAll('button').forEach(b => b.onclick = () => {
+        const a = b.dataset.a;
+        if (a === 'vis') l.visible = !l.visible; else if (a === 'lock') l.locked = !l.locked;
+        else if (a === 'up') return engine.moveLayer(l.id, 1); else if (a === 'down') return engine.moveLayer(l.id, -1);
+        engine.commit(); engine.refreshLayers();
+      });
+    });
+    $('#lyNew').onclick = () => engine.addLayer();
+    $('#lyMove')?.addEventListener('click', () => { engine.selected.userData.layer = engine.activeLayer; engine.commit(); engine.refreshLayers(); toast('Déplacé dans « ' + engine.layerOf(engine.selected || { userData: {} }).name + ' »'); });
+    $('#lyDel')?.addEventListener('click', () => engine.removeLayer(engine.activeLayer));
+  } else if (insTab === 'atelier') {
+    box.innerHTML = '<p style="color:var(--ink-3)">Chargement…</p>';
+    listProjects().then(list => {
+      box.innerHTML = `<div class="ins-row"><button class="btn small" id="pjSave">${svg('save').replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-3px;stroke:currentColor;fill:none;stroke-width:1.8"')} Enregistrer ici</button><button class="btn ghost small" id="pjNew">Page vierge</button></div>
+        ${list.length ? list.map(p => `<div class="proj" data-p="${p.id}"><img src="${p.thumb || ''}" alt=""><div><div class="t">${esc(p.name)}</div><div class="s">${new Date(p.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</div></div><div class="ins-row"><button class="btn small" data-a="open">Ouvrir</button><button class="ico small" data-a="del" aria-label="Supprimer">${svg('trash')}</button></div></div>`).join('') : '<p style="color:var(--ink-3)">Aucun projet enregistré. Tes créations restent sur cet appareil.</p>'}`;
+      $('#pjSave').onclick = saveProjectPrompt;
+      $('#pjNew').onclick = () => { engine.clear(); engine.layers = [{ id: 'l1', name: 'Calque 1', visible: true, locked: false }]; engine.activeLayer = 'l1'; engine.commit(); currentProject = null; closeInspector(); showHint(true); toast('Page vierge'); };
+      box.querySelectorAll('.proj').forEach(row => row.querySelectorAll('button').forEach(b => b.onclick = async () => {
+        const id = row.dataset.p;
+        if (b.dataset.a === 'open') { const pj = await getProject(id); try { engine.load(sanitize(pj.data)); engine.frameAll(); currentProject = { id, name: pj.name }; closeInspector(); toast('« ' + pj.name + ' » ouvert'); showHint(false); } catch (e) { toast(e.message); } }
+        else { await deleteProject(id); renderInspector(); }
+      }));
+    });
+  } else {
+    const s0 = engine.selected;
+    const cur = (() => { const id = s0 && (s0.userData.mats?.[engine.selectedRole || mainRole(s0)] || ''); if (id?.startsWith('c:')) { const [, c, r, m, e] = id.split(':'); return { c, r: +r, m: +m, e: +e }; } return { c: '#8FB8DE', r: 0.4, m: 0, e: 0 }; })();
+    box.innerHTML = `<p style="font-size:13px;color:var(--ink-2)">Compose ta propre matière : couleur, brillance, métal et lumière. ${s0 ? 'Elle s’applique en direct sur « ' + esc(nameOf(s0)) + ' » (' + (ROLE_LABEL[engine.selectedRole || mainRole(s0)] || '') + ').' : 'Sélectionne d’abord un élément.'}</p>
+      <input type="color" class="colorpick" id="mlC" value="${cur.c}">
+      <div class="param"><label>Brillance</label><input type="range" id="mlR" min="0" max="1" step="0.01" value="${1 - cur.r}"><output></output></div>
+      <div class="param"><label>Métal</label><input type="range" id="mlM" min="0" max="1" step="0.01" value="${cur.m}"><output></output></div>
+      <div class="param"><label>Lumière</label><input type="range" id="mlE" min="0" max="1" step="0.01" value="${cur.e}"><output></output></div>`;
+    const apply = () => {
+      const c = $('#mlC').value, r = (1 - +$('#mlR').value).toFixed(2), m = (+$('#mlM').value).toFixed(2), e = (+$('#mlE').value).toFixed(2);
+      box.querySelectorAll('.param output').forEach((o, i) => o.textContent = Math.round([1 - r, m, e][i] * 100) + ' %');
+      const s = engine.selected; if (!s) return;
+      const role = engine.selectedRole && rolesOf(s).includes(engine.selectedRole) ? engine.selectedRole : mainRole(s);
+      s.userData.mats = { ...s.userData.mats, [role]: `c:${c}:${r}:${m}:${e}` }; engine.applyMaterials(s);
+    };
+    box.querySelectorAll('input').forEach(i => { i.oninput = apply; i.onchange = () => engine.selected && engine.commit(); });
+    apply();
+  }
+}
+
+/* ---------- mon atelier : projets enregistrés sur l'appareil (IndexedDB) ---------- */
+let currentProject = null;
+function idb() {
+  return new Promise((res, rej) => { const r = indexedDB.open('atelier', 1); r.onupgradeneeded = () => r.result.createObjectStore('projets', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+async function store(mode, fn) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction('projets', mode); const st = tx.objectStore('projets'); const r = fn(st); tx.oncomplete = () => res(r?.result); tx.onerror = () => rej(tx.error); }); }
+async function listProjects() { try { const all = await store('readonly', st => st.getAll()); return (all || []).map(({ data, ...p }) => p).sort((a, b) => b.date - a.date); } catch { return []; } }
+const getProject = id => store('readonly', st => st.get(id));
+const deleteProject = id => store('readwrite', st => st.delete(id));
+async function saveProject(name, id) {
+  const thumb = await new Promise(res => { engine.renderer.render(engine.scene, engine.camera); const c = document.createElement('canvas'); c.width = 160; c.height = 120; const src = engine.canvas; const k = Math.max(160 / src.width, 120 / src.height); c.getContext('2d').drawImage(src, (160 - src.width * k) / 2, (120 - src.height * k) / 2, src.width * k, src.height * k); res(c.toDataURL('image/jpeg', 0.7)); });
+  const p = { id: id || 'p' + Date.now().toString(36), name: String(name).slice(0, 60), date: Date.now(), thumb, data: engine.serialize() };
+  await store('readwrite', st => st.put(p));
+  return p;
+}
+function saveProjectPrompt() {
+  openModal(`<h2>Enregistrer dans mon atelier</h2><input class="field" id="pjName" maxlength="60" style="font-size:17px;letter-spacing:0;text-transform:none;text-align:left" value="${esc(currentProject?.name || 'Ma création ' + new Date().toLocaleDateString('fr-FR'))}">
+    <div class="row"><button class="btn" id="pjOk">Enregistrer</button>${currentProject ? '<button class="btn ghost" id="pjCopy">Enregistrer une copie</button>' : ''}<button class="btn ghost" data-close>Annuler</button></div>`, root => {
+    const go = async copy => { try { const p = await saveProject(root.querySelector('#pjName').value || 'Sans titre', copy ? null : currentProject?.id); currentProject = { id: p.id, name: p.name }; closeModal(); toast('Enregistré dans ton atelier'); if (insTab === 'atelier') renderInspector(); } catch (e) { toast('Enregistrement impossible : ' + e.message, 4000); } };
+    root.querySelector('#pjOk').onclick = () => go(false); root.querySelector('#pjCopy')?.addEventListener('click', () => go(true));
+  });
+}
+
+/* ---------- sécurité : un fichier importé ne peut contenir que des éléments connus et des valeurs saines ---------- */
+function sanitize(d) {
+  if (!d || typeof d !== 'object' || d.app !== 'atelier' || !Array.isArray(d.items)) throw new Error('Fichier non reconnu');
+  const num = (v, def, min = -1e5, max = 1e5) => (typeof v === 'number' && isFinite(v) ? Math.min(max, Math.max(min, v)) : def);
+  const arr3 = (a, def) => Array.isArray(a) && a.length === 3 ? a.map((v, i) => num(v, def[i])) : def;
+  const matOk = v => typeof v === 'string' && v.length < 40 && /^[#a-z0-9:.\-]+$/i.test(v);
+  const clean = v => { // paramètres : nombres, chaînes courtes, ou description d'objet Jarvis (structure simple)
+    if (typeof v === 'number') return num(v, 0); if (typeof v === 'string') return v.slice(0, 200); if (typeof v === 'boolean') return v;
+    if (Array.isArray(v)) return v.slice(0, 600).map(clean); if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v).slice(0, 40)) if (/^[a-z_0-9]+$/i.test(k)) o[k] = clean(v[k]); return o; } return null;
+  };
+  const items = d.items.slice(0, 3000).filter(it => it && getItem(it.type)).map(it => ({
+    id: Math.floor(num(it.id, 0, 0, 1e9)) || undefined, type: it.type, params: clean(it.params || {}),
+    mats: Object.fromEntries(Object.entries(it.mats || {}).filter(([k, v]) => /^[a-z]+$/.test(k) && matOk(v))),
+    pos: arr3(it.pos, [0, 0, 0]), rotY: num(it.rotY, 0), scale: arr3(it.scale, [1, 1, 1]).map(v => Math.max(0.001, v)),
+    layer: typeof it.layer === 'string' ? it.layer.slice(0, 30) : undefined, free: !!it.free,
+    sculpt: it.sculpt && typeof it.sculpt.d === 'string' && it.sculpt.d.length < 8e6 ? { n: num(it.sculpt.n, 0, 0, 1e6), R: num(it.sculpt.R, 1, 0, 1e5), d: it.sculpt.d } : undefined,
+  }));
+  return { ...d, items, palette: Object.fromEntries(Object.entries(d.palette || {}).filter(([k, v]) => /^[a-z]+$/.test(k) && matOk(v))), ambiance: ['jour', 'doree', 'soir', 'studio', 'galerie'].includes(d.ambiance) ? d.ambiance : 'soir' };
+}
+
+/* ---------- page vierge : petit repère au centre ---------- */
+function showHint(on) {
+  const h = $('#hint'); h.hidden = !on || engine.content.children.length > 0;
+  if (!h.hidden) h.innerHTML = `<b>Page vierge</b>Touche ${svg('plus').replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2"')} Créer, demande à Jarvis,<br>ou ouvre un projet dans Calques → Mon atelier.`;
+}
+engine.addEventListener('change', () => { if (!$('#hint').hidden && engine.content.children.length) $('#hint').hidden = true; });
 
 /* ---------- repère sur l'objet visé / sélectionné ---------- */
 const label = $('#objLabel'); let labelBox = null, labelFor = null, labelN = 0;
@@ -607,6 +762,9 @@ function playTick(f = 660) {
   } catch { }
 }
 window.atelierTick = playTick;
+window.atelierSave = () => saveProjectPrompt();
+window.atelierLayers = () => $('#inspector').classList.contains('open') ? closeInspector() : openInspector('calques');
+window.atelierJarvis = () => openCmd(true);
 
 /* ---------- modelage ---------- */
 import('./sculpt.js').then(({ TOOLS }) => {
@@ -702,6 +860,31 @@ function loadTemplate(id, { quiet = false } = {}) {
   renderTray();
 }
 
+/* ---------- tenues coordonnées ---------- */
+const OUTFITS = [
+  { n: 'Casual chic', p: [['chemise', { longueur: 1 }, ['lin', 'soie', 'denim']], ['pantalon', { longueur: 0.2 }, ['denim', 'laine-gris', 'cuir-noir']]] },
+  { n: 'Soirée', p: [['robe-longue', { longueur: 1.2 }, ['soie', 'satin-noir', 'velours-vert', 'velours-rouille']]] },
+  { n: 'Street', p: [['sweat', {}, ['laine-gris', 'plastique-noir', 'cachemire']], ['short', { longueur: 0.4 }, ['denim', 'satin-noir']]] },
+  { n: 'Tailleur', p: [['chemise', { longueur: 1 }, ['soie', 'lin']], ['veste', { longueur: 0.5 }, ['tweed', 'laine-gris', 'cachemire']], ['pantalon', { longueur: 0.1 }, ['laine-gris', 'tweed']]] },
+  { n: 'Parisienne', p: [['haut', { longueur: 0.9 }, ['cachemire', 'soie']], ['jupe-plissee', { longueur: 0.9 }, ['satin-noir', 'cuir-noir', 'tweed']]] },
+  { n: 'Hiver', p: [['manteau', { longueur: 1 }, ['cachemire', 'tweed', 'laine-gris']], ['pantalon', { longueur: 0.2 }, ['cuir-noir', 'denim']]] },
+  { n: 'Cocktail', p: [['robe', { longueur: 0.7 }, ['velours-rouille', 'satin-noir', 'soie']], ['veste', { longueur: 0.2 }, ['cuir-noir', 'tweed']]] },
+];
+function proposeOutfit() {
+  let person = engine.selected && (engine.selected.userData.type || '').startsWith('perso') ? engine.selected : engine.content.children.find(g => (g.userData.type || '').startsWith('perso'));
+  if (!person) person = engine.add('perso-debout');
+  // on retire les vêtements déjà portés
+  for (const g of [...engine.content.children]) if (getItem(g.userData.type)?.garment && g.position.distanceTo(person.position) < 0.05) { engine.content.remove(g); engine.dispose(g); }
+  const o = OUTFITS[Math.floor(Math.random() * OUTFITS.length)];
+  const k = (person.userData.params?.taille || 1.75) / 1.75, c = person.userData.params?.carrure || 1;
+  for (const [type, params, fabrics] of o.p) {
+    const f = fabrics[Math.floor(Math.random() * fabrics.length)];
+    engine.add(type, { params, pos: person.position.toArray(), rotY: person.rotation.y, scale: [k * c * 1.04, k, k * c * 1.04], mats: { vetement: f }, silent: true, layer: person.userData.layer });
+  }
+  engine.setSelection(person); engine.commit(); engine.focus(person, 2);
+  toast('Tenue « ' + o.n + ' » : touche encore pour une autre proposition', 3000);
+}
+
 /* ---------- propositions ---------- */
 function suggest() {
   const types = engine.content.children.map(g => g.userData.type);
@@ -780,6 +963,9 @@ function openMenu() {
   openModal(`<h2>Atelier</h2>
     <div class="optrow"><span>Fond</span><div class="seg" id="mBg"><button data-v="studio">Studio</button><button data-v="camera">Caméra</button></div></div>
     <div class="optrow"><span>Caméra</span><div class="seg" id="mFacing"><button data-v="user">Avant</button><button data-v="environment">Arrière</button></div></div>
+    <div class="optrow"><span>Webcam</span><select id="mCam" style="max-width:190px;background:#1b2633;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:6px"><option value="">Automatique</option></select></div>
+    <div class="optrow"><span>Outils</span><div class="seg" id="mDock"><button data-v="gauche">Gauche</button><button data-v="droite">Droite</button></div></div>
+    <div class="optrow"><span>Taille des outils</span><div class="seg" id="mDockS"><button data-v="0">Normale</button><button data-v="1">Petite</button></div></div>
     <div class="optrow"><span>Murs qui s’effacent</span><div class="seg" id="mCut"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="optrow"><span>Sons de confirmation</span><div class="seg" id="mSound"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="optrow"><span>Grille au sol</span><div class="seg" id="mGrid"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
@@ -787,6 +973,7 @@ function openMenu() {
       <button class="item" data-m="jarvis">${svg('sparkle')}<div><div class="t">Cerveau Jarvis</div><div class="s">${brain.key ? 'Actif. Changer de clé ou de modèle.' : 'Créer n’importe quoi à partir d’une phrase.'}</div></div></button>
       <button class="item" data-m="walk">${svg('walk')}<div><div class="t">Visiter</div><div class="s">Te promener dans ta création à hauteur d’yeux.</div></div></button>
       <button class="item" data-m="frame">${svg('frame')}<div><div class="t">Vue d’ensemble</div></div></button>
+      <button class="item" data-m="save">${svg('save')}<div><div class="t">Enregistrer dans mon atelier</div><div class="s">Sur cet appareil, pour reprendre plus tard.</div></div></button>
       <button class="item" data-m="open">${svg('open')}<div><div class="t">Ouvrir un projet</div><div class="s">Un fichier .atelier reçu ou enregistré.</div></div></button>
       <button class="item" data-m="new">${svg('plus')}<div><div class="t">Nouveau projet</div><div class="s">Repartir d’une scène vide.</div></div></button>
       <button class="item" data-m="help">${svg('help')}<div><div class="t">Mode d’emploi</div></div></button>
@@ -795,6 +982,15 @@ function openMenu() {
     </div><div class="row"><button class="btn ghost" data-close>Fermer</button></div>`, root => {
     const seg = (id, val, fn) => { const s = root.querySelector(id); s.querySelectorAll('button').forEach(b => { b.classList.toggle('on', b.dataset.v === String(val)); b.onclick = () => { s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); fn(b.dataset.v); }; }); };
     seg('#mBg', engine.backdrop, v => setBackdrop(v));
+    seg('#mDock', dockPref.side === 'droite' ? 'droite' : 'gauche', v => setDock({ side: v, hidden: false }));
+    seg('#mDockS', dockPref.compact ? 1 : 0, v => setDock({ compact: v === '1' }));
+    (async () => { // toutes les caméras branchées : webcam USB, caméra de continuité, etc.
+      const sel = root.querySelector('#mCam'); if (!sel || !navigator.mediaDevices?.enumerateDevices) return;
+      let cur = null; try { cur = localStorage.getItem('atelier:webcam'); } catch { }
+      const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+      devs.forEach((d, i) => { const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || 'Caméra ' + (i + 1); if (d.deviceId === cur) o.selected = true; sel.appendChild(o); });
+      sel.onchange = async () => { try { sel.value ? localStorage.setItem('atelier:webcam', sel.value) : localStorage.removeItem('atelier:webcam'); } catch { } const had = !!stream; stopCamera(); if (had) { try { await startCamera(); } catch (e) { toast(e.message); } } };
+    })();
     seg('#mFacing', facing, async v => { facing = v; const had = !!stream; stopCamera(); if (had) { try { await startCamera(); if (hands?.active) hands.mirror = facing === 'user'; } catch (e) { toast(e.message); } } });
     seg('#mCut', engine.cutaway ? 1 : 0, v => engine.cutaway = v === '1');
     seg('#mSound', soundOn ? 1 : 0, v => { soundOn = v === '1'; try { localStorage.setItem('atelier:son', v); } catch { } if (soundOn) playTick(); });
@@ -802,6 +998,7 @@ function openMenu() {
     root.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
       const m = b.dataset.m; closeModal();
       if (m === 'jarvis') brainSetup();
+      else if (m === 'save') saveProjectPrompt();
       else if (m === 'walk') startWalk(); else if (m === 'frame') engine.frameAll();
       else if (m === 'open') $('#fileInput').click();
       else if (m === 'new') { engine.clear(); toast('Nouveau projet'); }
@@ -836,7 +1033,7 @@ setupJoystick(engine, $('#joystick'));
 /* ---------- import ---------- */
 $('#fileInput').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { engine.load(await readProjectFile(f)); engine.frameAll(); toast('Projet ouvert'); renderTray(); }
+  try { engine.load(sanitize(await readProjectFile(f))); engine.frameAll(); toast('Projet ouvert'); renderTray(); }
   catch (err) { toast(err.message || 'Fichier illisible', 4000); }
 };
 
@@ -924,10 +1121,10 @@ if (isDisplay) startDisplay();
 else {
   setupInput(engine, $('#scene'), ui);
   renderTabs(); renderTray();
+  // chaque ouverture = page vierge ; la session précédente est rangée dans « Mon atelier »
   const saved = restore();
-  if (saved && saved.items?.length) { try { engine.load(saved, { record: false }); engine.history = [JSON.stringify(engine.serialize())]; } catch { loadTemplate('sculpture', { quiet: true }); } }
-  else loadTemplate('sculpture', { quiet: true });
-  engine.dispatchEvent(new Event('change'));
+  if (saved && saved.items?.length) { (async () => { try { engine.load(sanitize(saved), { record: false, keepCamera: false }); await saveProject('Session du ' + new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }), 'session-precedente'); } catch { } engine.clear(false); engine.layers = [{ id: 'l1', name: 'Calque 1', visible: true, locked: false }]; engine.activeLayer = 'l1'; engine.history = [JSON.stringify(engine.serialize())]; engine.dispatchEvent(new Event('change')); showHint(true); })(); }
+  else { engine.history = [JSON.stringify(engine.serialize())]; engine.dispatchEvent(new Event('change')); showHint(true); }
   let first = true; try { first = !localStorage.getItem('atelier:seen'); localStorage.setItem('atelier:seen', '1'); } catch { }
   if (first) welcome();
 }

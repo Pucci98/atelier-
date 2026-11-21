@@ -65,9 +65,11 @@ export class Engine extends EventTarget {
     this.raycaster = new THREE.Raycaster();
     this.clock = new THREE.Clock();
     this.cutaway = true;
+    this.layers = [{ id: 'l1', name: 'Calque 1', visible: true, locked: false }]; this.activeLayer = 'l1';
+    this.lastActivity = performance.now();
     this.sculptor = new Sculptor(this);
 
-    this.setAmbiance('studio', false);
+    this.setAmbiance('soir', false);
     this.setBackdrop('studio');
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -168,7 +170,7 @@ export class Engine extends EventTarget {
     const A = {
       jour: { sky: 0xEEF2F6, ground: 0xD3E3EF, sun: [0xfff0dc, 2.6], dir: [6, 11, 5], hemi: 0.65, env: 0.9, exp: 1.0, lamps: 0.6 },
       doree: { sky: 0xE7C9A2, sun: [0xffb46b, 3.2], dir: [10, 3.2, 2], hemi: 0.35, env: 0.55, exp: 1.05, lamps: 0.9 },
-      soir: { sky: 0x1C1A1F, sun: [0x6f86c9, 0.25], dir: [-4, 8, -3], hemi: 0.08, env: 0.12, exp: 1.15, lamps: 1.6 },
+      soir: { sky: 0x16233A, ground: 0x203353, sun: [0x8FB0F0, 1.1], dir: [-4, 9, -3], hemi: 0.42, env: 0.45, exp: 1.1, lamps: 1.6 },
       studio: { sky: 0xF3F6F9, ground: 0xCFE1F0, sun: [0xffffff, 1.7], dir: [4, 12, 7], hemi: 0.85, env: 1.1, exp: 1.0, lamps: 0.5 },
       galerie: { sky: 0xDADCDE, sun: [0xf4f7ff, 1.2], dir: [0, 14, 2], hemi: 0.5, env: 0.8, exp: 1.0, lamps: 1.2 },
     }[name] || {};
@@ -215,6 +217,8 @@ export class Engine extends EventTarget {
     g.userData.id = opts.id ?? this.uid++;
     if (opts.id && opts.id >= this.uid) this.uid = opts.id + 1;
     g.userData.mats = { ...(opts.mats || {}) };
+    g.userData.layer = opts.layer && this.layers.some(l => l.id === opts.layer) ? opts.layer : this.activeLayer;
+    g.userData.free = !!opts.free;
     if (opts.pos) g.position.fromArray(opts.pos);
     else {
       // placer au centre de la vue, sur le sol, en évitant d'empiler exactement
@@ -239,6 +243,7 @@ export class Engine extends EventTarget {
     this.applyMaterials(g);
     this.content.add(g);
     this.updateLamps();
+    this.applyLayer(g);
     if (!opts.silent) { this.setSelection(g); this.commit(); }
     return g;
   }
@@ -362,6 +367,7 @@ export class Engine extends EventTarget {
     if (g) this.hoverBox.box.setFromObject(g);
   }
   setSelection(g, role = null) {
+    this.touch();
     this.selected = g; this.selectedRole = role;
     this.updateSelectionHelper();
     this.dispatchEvent(new CustomEvent('selection', { detail: { object: g, role } }));
@@ -384,6 +390,18 @@ export class Engine extends EventTarget {
 
   /* ---------- lancer de rayon ---------- */
   ndc(x, y) { const r = this.canvas.getBoundingClientRect(); return new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1); }
+  layerOf(g) { return this.layers.find(l => l.id === g.userData.layer) || this.layers[0]; }
+  applyLayer(g) { g.visible = this.layerOf(g).visible; }
+  refreshLayers() { for (const g of this.content.children) this.applyLayer(g); if (this.selected && !this.selected.visible) this.setSelection(null); this.dispatchEvent(new Event('layers')); }
+  addLayer(name) { const id = 'l' + Date.now().toString(36); this.layers.push({ id, name: name || 'Calque ' + (this.layers.length + 1), visible: true, locked: false }); this.activeLayer = id; this.commit(); this.refreshLayers(); return id; }
+  removeLayer(id) {
+    if (this.layers.length < 2) return;
+    const fallback = this.layers.find(l => l.id !== id).id;
+    for (const g of this.content.children) if (g.userData.layer === id) g.userData.layer = fallback;
+    this.layers = this.layers.filter(l => l.id !== id); if (this.activeLayer === id) this.activeLayer = fallback;
+    this.commit(); this.refreshLayers();
+  }
+  moveLayer(id, dir) { const i = this.layers.findIndex(l => l.id === id), j = i + dir; if (j < 0 || j >= this.layers.length) return; [this.layers[i], this.layers[j]] = [this.layers[j], this.layers[i]]; this.commit(); this.refreshLayers(); }
   pick(x, y) {
     this.raycaster.setFromCamera(this.ndc(x, y), this.camera);
     const hits = this.raycaster.intersectObjects(this.content.children, true);
@@ -391,9 +409,28 @@ export class Engine extends EventTarget {
       if (!h.object.isMesh || !h.object.visible) continue;
       const m = h.object.material; if (m?.userData?.fadeable && m.opacity < 0.5) continue;
       let o = h.object; while (o.parent && o.parent !== this.content) o = o.parent;
+      if (!o.visible || this.layerOf(o).locked) continue; // calque masqué ou verrouillé
       return { object: o, role: h.object.userData.role || null, point: h.point };
     }
     return null;
+  }
+  // glisser un objet : posé au sol → il glisse sur le sol ; détaché → il suit le doigt dans l'espace (plan face à la caméra)
+  dragStart(g, x, y) {
+    let plane;
+    if (g.userData.free) { const n = this.camera.getWorldDirection(new THREE.Vector3()).negate(); plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, g.position); }
+    else plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -g.position.y);
+    this.raycaster.setFromCamera(this.ndc(x, y), this.camera);
+    const p = new THREE.Vector3(); if (!this.raycaster.ray.intersectPlane(plane, p)) return null;
+    return { g, plane, off: g.position.clone().sub(p) };
+  }
+  dragMove(d, x, y) {
+    if (!d) return false;
+    this.raycaster.setFromCamera(this.ndc(x, y), this.camera);
+    const p = new THREE.Vector3(); if (!this.raycaster.ray.intersectPlane(d.plane, p)) return false;
+    const np = p.add(d.off), sn = v => Math.round(v * 20) / 20;
+    d.g.position.x = sn(np.x); d.g.position.z = sn(np.z);
+    if (d.g.userData.free) d.g.position.y = Math.max(0, sn(np.y));
+    this.touch(); return true;
   }
   floorPoint(x, y, height = 0) {
     this.raycaster.setFromCamera(this.ndc(x, y), this.camera);
@@ -403,26 +440,32 @@ export class Engine extends EventTarget {
 
   /* ---------- historique & sérialisation ---------- */
   serializeItem(g) {
-    const it = { id: g.userData.id, type: g.userData.type, params: g.userData.params, mats: g.userData.mats, pos: g.position.toArray().map(v => +v.toFixed(4)), rotY: +g.rotation.y.toFixed(4), scale: g.scale.toArray().map(v => +v.toFixed(4)) };
+    const it = { id: g.userData.id, type: g.userData.type, params: g.userData.params, mats: g.userData.mats, pos: g.position.toArray().map(v => +v.toFixed(4)), rotY: +g.rotation.y.toFixed(4), scale: g.scale.toArray().map(v => +v.toFixed(4)), layer: g.userData.layer };
+    if (g.userData.free) it.free = true;
     const m = this.sculptor.meshOf(g); if (m?.userData.sculpted) it.sculpt = m.userData.packed || (m.userData.packed = packSculpt(m));
     return it;
   }
   serialize() {
-    return { app: 'atelier', v: 1, ambiance: this.ambiance, palette: this.palette, items: this.content.children.map(g => this.serializeItem(g)), camera: { target: this.orbit.target.toArray(), radius: this.orbit.radius, az: this.orbit.az, pol: this.orbit.pol } };
+    return { app: 'atelier', v: 2, ambiance: this.ambiance, palette: this.palette, layers: this.layers, activeLayer: this.activeLayer, items: this.content.children.map(g => this.serializeItem(g)), camera: { target: this.orbit.target.toArray(), radius: this.orbit.radius, az: this.orbit.az, pol: this.orbit.pol } };
   }
   load(data, { record = true, keepCamera = false } = {}) {
     if (!data || data.app !== 'atelier') throw new Error('Fichier non reconnu');
     const selId = this.selected?.userData.id;
     this.clear(false);
     this.palette = { ...DEFAULT_MATS, ...(data.palette || {}) };
+    this.layers = Array.isArray(data.layers) && data.layers.length ? data.layers.map(l => ({ id: String(l.id), name: String(l.name).slice(0, 40), visible: l.visible !== false, locked: !!l.locked })) : [{ id: 'l1', name: 'Calque 1', visible: true, locked: false }];
+    this.activeLayer = this.layers.some(l => l.id === data.activeLayer) ? data.activeLayer : this.layers[0].id;
     for (const it of data.items || []) this.add(it.type, { ...it, silent: true });
+    this.dispatchEvent(new Event('layers'));
     this.setAmbiance(data.ambiance || 'jour', false);
     if (data.camera && !keepCamera) { const c = data.camera; this.orbit.target.fromArray(c.target); this.orbit.radius = c.radius; this.orbit.az = c.az; this.orbit.pol = c.pol; }
     if (selId != null) { const s = this.content.children.find(g => g.userData.id === selId); if (s) this.setSelection(s); }
     if (record) this.commit();
     else this.dispatchEvent(new Event('change'));
   }
+  touch() { this.lastActivity = performance.now(); }
   commit() {
+    this.touch();
     const s = JSON.stringify(this.serialize());
     if (this.history[this.history.length - 1] !== s) { this.history.push(s); if (this.history.length > 40) this.history.shift(); this.future = []; }
     this.dispatchEvent(new Event('change'));
@@ -442,6 +485,8 @@ export class Engine extends EventTarget {
 
   /* ---------- boucle ---------- */
   frame() {
+    const idle = performance.now() - this.lastActivity > 2500 && !this.orbit.goal && !this.walk && !document.body.classList.contains('hands-on');
+    if (idle && (this._skip = (this._skip || 0) + 1) % 4) return; // au repos : ~15 images/s au lieu de 60
     const raw = this.clock.getDelta(), dt = Math.min(raw, 0.05);
     this.applyOffset();
     // qualité adaptative : on baisse la résolution si l'appareil peine, on la remonte s'il a de la marge

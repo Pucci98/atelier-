@@ -11,6 +11,7 @@ export function setupInput(engine, canvas, ui) {
   function centroid() { const a = [...pts.values()]; return { x: a.reduce((s, p) => s + p.x, 0) / a.length, y: a.reduce((s, p) => s + p.y, 0) / a.length }; }
   function twoState() { const [a, b] = [...pts.values()]; return { d: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x), c: centroid() }; }
 
+  for (const ev of ['pointerdown', 'pointermove', 'wheel']) canvas.addEventListener(ev, () => engine.touch(), { passive: true });
   canvas.addEventListener('pointerdown', e => {
     canvas.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
@@ -27,9 +28,7 @@ export function setupInput(engine, canvas, ui) {
       if (btn === 2 || e.shiftKey) { mode = 'pan'; return; }
       if (hit && hit.object === engine.selected) {
         mode = 'drag';
-        dragPlaneY = engine.selected.position.y;
-        const fp = engine.floorPoint(e.clientX, e.clientY, dragPlaneY);
-        dragOffset = fp ? engine.selected.position.clone().sub(fp) : new THREE.Vector3();
+        start = engine.dragStart(engine.selected, e.clientX, e.clientY);
         start = engine.selected.position.clone();
       } else {
         mode = 'orbit'; start = hit;
@@ -53,8 +52,7 @@ export function setupInput(engine, canvas, ui) {
     if (mode === 'orbit' && moved) engine.orbitBy(dx * 0.006, dy * 0.006);
     else if (mode === 'pan') engine.panBy(dx, dy);
     else if (mode === 'drag' && engine.selected) {
-      const fp = engine.floorPoint(e.clientX, e.clientY, dragPlaneY);
-      if (fp) { const np = fp.add(dragOffset); engine.selected.position.x = snap(np.x); engine.selected.position.z = snap(np.z); }
+      engine.dragMove(start, e.clientX, e.clientY);
     } else if (mode === 'two' && pts.size === 2 && two) {
       const s = twoState();
       if (two.onSel && engine.selected) {
@@ -101,11 +99,23 @@ export function setupInput(engine, canvas, ui) {
     if (e.target.closest('input, textarea')) return;
     const s = engine.selected;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? engine.redo() : engine.undo(); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); window.atelierSave?.(); return; }
+    if (e.key.toLowerCase() === 'l' && !e.metaKey && !e.ctrlKey) { window.atelierLayers?.(); return; }
+    if (e.key === ' ' || e.key.toLowerCase() === 'j') { if (e.key === ' ' && !e.shiftKey) return; e.preventDefault(); window.atelierJarvis?.(); return; }
     if (!s) return;
     if (e.key === 'Delete' || e.key === 'Backspace') engine.remove(s);
     else if (e.key.toLowerCase() === 'd') engine.duplicate(s);
     else if (e.key.toLowerCase() === 'r') { s.rotation.y += Math.PI / 4; engine.commit(); }
     else if (e.key === 'Escape') engine.setSelection(null);
+    else if (e.key.startsWith('Arrow')) { // flèches : déplacer (Maj = grand pas), haut/bas avec Alt = élévation
+      e.preventDefault(); const st = e.shiftKey ? 0.5 : 0.05, az = engine.orbit.az;
+      const f = new THREE.Vector3(-Math.sin(az), 0, -Math.cos(az)), r = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az));
+      if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) s.position.y = Math.max(0, s.position.y + (e.key === 'ArrowUp' ? st : -st));
+      else s.position.addScaledVector({ ArrowUp: f, ArrowDown: f.clone().negate(), ArrowLeft: r.clone().negate(), ArrowRight: r }[e.key], st);
+      clearTimeout(engine._kc); engine._kc = setTimeout(() => engine.commit(), 400); engine.touch();
+    }
+    else if (e.key === '+' || e.key === '=') { s.scale.multiplyScalar(1.1); engine.commit(); }
+    else if (e.key === '-') { s.scale.multiplyScalar(1 / 1.1); engine.commit(); }
   });
 }
 

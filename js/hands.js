@@ -55,7 +55,7 @@ export class Hands {
     this.mirror = mirror;
     await this.load();
     this.active = true; document.body.classList.add('hands-on');
-    const loop = () => { if (!this.active) return; try { this.tick(); } catch (e) { console.error(e); } requestAnimationFrame(loop); };
+    const loop = () => { if (!this.active) return; this.engine.touch(); try { this.tick(); } catch (e) { console.error(e); } requestAnimationFrame(loop); };
     loop();
   }
   stop() {
@@ -226,15 +226,13 @@ export class Hands {
       else if (e.sculptor.active && e.selected && e.sculptor.begin(e.selected, p.x, p.y)) p.mode = 'sculpt';
       else if (p.hit) {
         if (e.selected !== p.hit.object) e.setSelection(p.hit.object, p.hit.role);
-        p.mode = 'move'; p.planeY = e.selected.position.y;
-        const fp = e.floorPoint(p.x, p.y, p.planeY); p.off = fp ? e.selected.position.clone().sub(fp) : null;
+        p.mode = 'move'; p.drag = e.dragStart(e.selected, p.x, p.y);
       } else p.mode = 'orbit';
     }
     if (!p.dragging) return;
     h.mode = p.mode === 'none' || p.mode === 'range' ? 'pinch' : p.mode;
-    if (p.mode === 'move' && p.off && e.selected) {
-      const fp = e.floorPoint(h.x, h.y, p.planeY);
-      if (fp) { const np = fp.add(p.off); e.selected.position.x = Math.round(np.x * 20) / 20; e.selected.position.z = Math.round(np.z * 20) / 20; p.moved = true; }
+    if (p.mode === 'move' && p.drag) {
+      if (e.dragMove(p.drag, h.x, h.y)) p.moved = true;
     } else if (p.mode === 'orbit') {
       e.orbitBy((h.x - p.lx) * 0.008, (h.y - p.ly) * 0.007);
     } else if (p.mode === 'sculpt') e.sculptor.move(h.x, h.y);

@@ -249,3 +249,41 @@ body.sheet-open #cmd { bottom: calc(var(--sab) + 220px); }
 body.has-sel .bubble { top: calc(var(--sat) + 180px); }
 .modal-card { left: calc(50% + 30px); }
 @media (max-width: 430px) { .dk { width: 42px; height: 42px; } #selPanel, #sheet, #cmd { left: calc(var(--sal) + 64px); } }
+
+/* ---------- v4 : dock réglable, panneau latéral, calques ---------- */
+body.dock-right #dock { left: auto; right: calc(var(--sar) + 8px); }
+body.dock-compact .dk { width: 36px; height: 36px; border-radius: 12px; }
+body.dock-compact .dk span { display: none; }
+body.dock-compact .dk i svg { width: 18px; height: 18px; }
+.dk-min i svg { transform: rotate(180deg); }
+body.dock-right .dk-min i svg { transform: none; }
+body.dock-hidden #dock { display: none; }
+#dockTab { position: fixed; z-index: 20; left: 0; top: 50%; transform: translateY(-50%); width: 22px; height: 64px; border-radius: 0 12px 12px 0; background: var(--glass); border: 1px solid var(--line); border-left: 0; color: var(--brass-2); display: grid; place-items: center; }
+#dockTab svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+body.dock-right #dockTab { left: auto; right: 0; border-radius: 12px 0 0 12px; border: 1px solid var(--line); border-right: 0; }
+body.dock-right #dockTab svg { transform: rotate(180deg); }
+body.dock-hidden #selPanel, body.dock-hidden #sheet, body.dock-hidden #cmd, body.dock-right #selPanel, body.dock-right #sheet, body.dock-right #cmd { left: calc(var(--sal) + 10px); }
+body.dock-right #selPanel, body.dock-right #sheet, body.dock-right #cmd { right: calc(var(--sar) + 70px); }
+body.dock-compact:not(.dock-right):not(.dock-hidden) #selPanel, body.dock-compact:not(.dock-right):not(.dock-hidden) #sheet, body.dock-compact:not(.dock-right):not(.dock-hidden) #cmd { left: calc(var(--sal) + 56px); }
+
+#inspector { position: fixed; z-index: 30; top: 0; right: 0; bottom: 0; width: min(360px, 88vw); padding: calc(var(--sat) + 10px) 12px calc(var(--sab) + 12px); background: var(--glass-2); backdrop-filter: blur(24px) saturate(140%); -webkit-backdrop-filter: blur(24px) saturate(140%); border-left: 1px solid var(--line); transform: translateX(105%); transition: transform .3s cubic-bezier(.2,.8,.2,1); display: flex; flex-direction: column; box-shadow: -20px 0 60px rgba(0,0,0,.35); touch-action: pan-y; }
+#inspector.open { transform: none; }
+.ins-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.ins-head .tabs { flex: 1; padding: 0; }
+.ins-body { flex: 1; overflow-y: auto; display: grid; align-content: start; gap: 8px; user-select: text; }
+.lay { display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: 12px; border: 1px solid var(--line); background: rgba(238,244,250,.04); }
+.lay.on { border-color: var(--brass); background: rgba(93,183,240,.12); }
+.lay .nm { flex: 1; min-width: 0; font-size: 14px; background: transparent; border: 0; color: var(--ink); outline: 0; }
+.lay .ct { font-size: 11px; color: var(--ink-3); }
+.lay button { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--ink-2); }
+.lay button svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.lay button.off { opacity: .35; }
+.ins-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.proj { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: center; padding: 8px; border-radius: 12px; border: 1px solid var(--line); background: rgba(238,244,250,.04); }
+.proj img { width: 64px; height: 48px; object-fit: cover; border-radius: 8px; background: #223; }
+.proj .t { font-size: 14px; } .proj .s { font-size: 11.5px; color: var(--ink-3); }
+.ins-body .param { grid-template-columns: 76px 1fr 46px; }
+.colorpick { width: 100%; height: 46px; border: 0; border-radius: 12px; padding: 0; background: none; }
+.mat-prev { height: 120px; border-radius: 14px; border: 1px solid var(--line); }
+#hint { position: fixed; z-index: 5; left: 50%; top: 46%; transform: translate(-50%, -50%); text-align: center; color: var(--ink-2); pointer-events: none; }
+#hint b { display: block; font-family: var(--serif); font-weight: 400; font-size: 30px; color: var(--ink); margin-bottom: 6px; }

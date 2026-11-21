@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Atelier</title>
 <meta name="description" content="Atelier — créer des espaces, des scènes et des vêtements en 3D, à la main et à la voix.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-VrGVLSXMiIM3PFZqrynCooeb9LzwduscpFjZ1pRr7Q0=' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' data: blob: https://storage.googleapis.com https://api.anthropic.com https://0.peerjs.com wss://0.peerjs.com https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#11100E">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -48,9 +50,19 @@
   <button class="dk" data-dock="matieres" title="Matières"><i data-i="swatch"></i><span>Matières</span></button>
   <button class="dk" data-dock="styles" title="Styles et modèles"><i data-i="palette"></i><span>Styles</span></button>
   <button class="dk" data-dock="lumiere" title="Lumière"><i data-i="bulb"></i><span>Lumière</span></button>
+  <button class="dk" data-dock="calques" title="Calques, projets, matière libre"><i data-i="layers"></i><span>Calques</span></button>
   <button class="dk" data-dock="frame" title="Vue d'ensemble"><i data-i="frame"></i><span>Vue</span></button>
   <button class="dk" data-dock="walk" title="Visiter"><i data-i="walk"></i><span>Visiter</span></button>
+  <button class="dk dk-min" data-dock="hide" title="Réduire"><i data-i="chev"></i></button>
 </nav>
+<button id="dockTab" hidden aria-label="Afficher les outils"><i data-i="chev"></i></button>
+
+<!-- panneau latéral (glisser depuis le bord droit) : calques, mon atelier, matière libre -->
+<aside id="inspector" aria-hidden="true">
+  <div class="ins-head"><nav class="tabs" id="insTabs"><button class="tab on" data-ins="calques">Calques</button><button class="tab" data-ins="atelier">Mon atelier</button><button class="tab" data-ins="matiere">Matière libre</button></nav><button class="ico small" id="insClose" aria-label="Fermer"></button></div>
+  <div class="ins-body" id="insBody"></div>
+</aside>
+<div id="hint" hidden></div>
 
 <!-- commande libre (Jarvis) -->
 <form id="cmd" hidden autocomplete="off">
@@ -77,6 +89,7 @@
     <button data-act="material" title="Matière"><i data-i="swatch"></i><span>Matière</span></button>
     <button data-act="params" title="Réglages"><i data-i="sliders"></i><span>Réglages</span></button>
     <button data-act="ai" title="Modifier à la voix ou au texte"><i data-i="sparkle"></i><span>Jarvis</span></button>
+    <button data-act="free" title="Détacher du sol / reposer au sol"><i data-i="anchor"></i><span>Sol</span></button>
     <button data-act="rotate" title="Pivoter"><i data-i="rotate"></i><span>Pivoter</span></button>
     <button data-act="duplicate" title="Dupliquer"><i data-i="copy"></i><span>Copier</span></button>
     <button data-act="focus" title="Cadrer"><i data-i="focus"></i><span>Cadrer</span></button>

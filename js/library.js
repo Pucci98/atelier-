@@ -386,14 +386,27 @@ function buste({ h = 1.55 }) {
   return g;
 }
 
+// plis réguliers (jupes plissées, robes longues) et léger tombé irrégulier de l'ourlet
+function pleat(geo, n, amp, yTop) {
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i); if (y > yTop) continue;
+    const a = Math.atan2(z, x), k = Math.min(1, (yTop - y) / 0.4);
+    const f = 1 + (Math.sin(a * n) * amp + Math.sin(a * 3 + y * 7) * 0.012) * k;
+    p.setXYZ(i, x * f, y + Math.sin(a * 5) * 0.008 * k, z * f);
+  }
+  geo.computeVertexNormals();
+}
+
 // vêtements dimensionnés pour le personnage standard de 1,75 m (debout)
 function vetement({ modele = 'robe', longueur = 1 }) {
   const g = new THREE.Group();
   const flat = 0.74;
   const L = (pts) => { const m = part(lathe(pts, 64), 'vetement'); m.material = material('lin'); m.scale.z = flat; m.userData.double = true; return m; };
   const sleeve = (len, rTop, rBot, s) => {
-    const sh = new THREE.Group(); sh.position.set(s * 0.215, 1.42, 0); sh.rotation.z = s * 0.08;
-    const m = part(metricUV(new THREE.CylinderGeometry(rTop, rBot, len, 24, 1, true)), 'vetement', 0, -len / 2 + 0.03, 0);
+    // la manche suit l'inclinaison du bras (pose debout) et l'épouse au plus près
+    const sh = new THREE.Group(); sh.position.set(s * 0.215, 1.42, 0); sh.rotation.z = -s * 0.08;
+    const m = part(metricUV(new THREE.CylinderGeometry(Math.min(rTop, 0.058), Math.min(rBot, 0.054), len, 24, 1, false)), 'vetement', 0, -len / 2 + 0.02, 0);
     m.material = material('lin'); sh.add(m); return sh;
   };
   if (modele === 'robe') {
@@ -409,6 +422,27 @@ function vetement({ modele = 'robe', longueur = 1 }) {
   } else if (modele === 'haut') {
     g.add(L([[0.19, 0.92], [0.175, 1.06], [0.185, 1.24], [0.19, 1.36], [0.165, 1.45], [0.07, 1.49]]));
     for (const s of [-1, 1]) g.add(sleeve(0.2 + 0.35 * (longueur - 0.5), 0.065, 0.058, s));
+  } else if (modele === 'robe-longue') {
+    const m = L([[0.36 + 0.1 * longueur, 0.06], [0.3, 0.3], [0.22, 0.72], [0.17, 0.98], [0.165, 1.06], [0.18, 1.24], [0.185, 1.36], [0.16, 1.45], [0.07, 1.49]]);
+    pleat(m.geometry, 18, 0.05, 0.95); g.add(m);
+  } else if (modele === 'jupe-plissee') {
+    const bas = 0.98 - 0.55 * longueur;
+    const m = L([[0.28 + 0.08 * longueur, bas], [0.22, 0.86], [0.168, 0.98], [0.163, 1.03]]); pleat(m.geometry, 28, 0.035, 0.97); g.add(m);
+  } else if (modele === 'chemise') {
+    g.add(L([[0.2, 0.86], [0.19, 0.95], [0.18, 1.06], [0.188, 1.24], [0.192, 1.36], [0.168, 1.45], [0.075, 1.5]]));
+    for (const s of [-1, 1]) g.add(sleeve(0.56 * longueur + 0.1, 0.06, 0.045, s));
+    const col = part(new THREE.TorusGeometry(0.07, 0.014, 10, 32), 'vetement', 0, 1.49, 0.01, { rot: [Math.PI / 2.3, 0, 0] }); col.material = material('lin'); g.add(col);
+  } else if (modele === 'veste') {
+    g.add(L([[0.215, 0.9 + 0.2 * (1 - longueur)], [0.205, 1.06], [0.21, 1.24], [0.215, 1.38], [0.195, 1.46], [0.09, 1.52]]));
+    for (const s of [-1, 1]) g.add(sleeve(0.6, 0.068, 0.056, s));
+    for (const s of [-1, 1]) { const rv = part(box(0.08, 0.28, 0.01), 'vetement', s * 0.06, 1.33, 0.155, { rot: [0.15, 0, s * 0.35] }); rv.material = material('lin'); g.add(rv); }
+  } else if (modele === 'sweat') {
+    g.add(L([[0.205, 0.86], [0.2, 0.92], [0.195, 1.06], [0.205, 1.24], [0.21, 1.36], [0.18, 1.45], [0.085, 1.5]]));
+    for (const s of [-1, 1]) g.add(sleeve(0.6, 0.075, 0.05, s));
+    const hood = part(new THREE.SphereGeometry(0.13, 24, 16, 0, Math.PI * 2, 0, Math.PI / 1.7), 'vetement', 0, 1.52, -0.07, { rot: [-0.9, 0, 0] }); hood.material = material('lin'); hood.scale.set(1, 0.9, 1.1); g.add(hood);
+  } else if (modele === 'short') {
+    g.add(L([[0.165, 0.86], [0.17, 0.94], [0.165, 1.02], [0.16, 1.04]]));
+    for (const s of [-1, 1]) { const leg = part(metricUV(new THREE.CylinderGeometry(0.1, 0.095 + 0.02 * longueur, 0.22, 24, 1, true)), 'vetement', s * 0.095, 0.8, 0); leg.material = material('lin'); g.add(leg); }
   } else if (modele === 'pantalon') {
     g.add(L([[0.165, 0.86], [0.17, 0.94], [0.165, 1.02], [0.16, 1.04]]));
     for (const s of [-1, 1]) {
@@ -740,6 +774,12 @@ export const CATALOG = [
   { id: 'jupe', cat: 'Mode', name: 'Jupe', build: p => vetement({ ...p, modele: 'jupe' }), params: { longueur: 1 }, ranges: { longueur: [0.3, 1.6] }, labels: { longueur: 'Longueur' }, garment: true },
   { id: 'haut', cat: 'Mode', name: 'Haut', build: p => vetement({ ...p, modele: 'haut' }), params: { longueur: 0.5 }, ranges: { longueur: [0.5, 1.6] }, labels: { longueur: 'Manches' }, garment: true },
   { id: 'manteau', cat: 'Mode', name: 'Manteau', build: p => vetement({ ...p, modele: 'manteau' }), params: { longueur: 1 }, ranges: { longueur: [0.5, 1.2] }, labels: { longueur: 'Longueur' }, garment: true },
+  { id: 'robe-longue', cat: 'Mode', name: 'Robe longue', build: p => vetement({ ...p, modele: 'robe-longue' }), params: { longueur: 1 }, ranges: { longueur: [0.5, 1.6] }, labels: { longueur: 'Ampleur' }, garment: true },
+  { id: 'jupe-plissee', cat: 'Mode', name: 'Jupe plissée', build: p => vetement({ ...p, modele: 'jupe-plissee' }), params: { longueur: 0.9 }, ranges: { longueur: [0.3, 1.6] }, labels: { longueur: 'Longueur' }, garment: true },
+  { id: 'chemise', cat: 'Mode', name: 'Chemise', build: p => vetement({ ...p, modele: 'chemise' }), params: { longueur: 1 }, ranges: { longueur: [0.3, 1] }, labels: { longueur: 'Manches' }, garment: true },
+  { id: 'veste', cat: 'Mode', name: 'Veste', build: p => vetement({ ...p, modele: 'veste' }), params: { longueur: 0.6 }, ranges: { longueur: [0, 1] }, labels: { longueur: 'Longueur' }, garment: true },
+  { id: 'sweat', cat: 'Mode', name: 'Sweat à capuche', build: p => vetement({ ...p, modele: 'sweat' }), params: {}, garment: true },
+  { id: 'short', cat: 'Mode', name: 'Short', build: p => vetement({ ...p, modele: 'short' }), params: { longueur: 0.5 }, ranges: { longueur: [0, 1] }, labels: { longueur: 'Évasé' }, garment: true },
   { id: 'pantalon', cat: 'Mode', name: 'Pantalon', build: p => vetement({ ...p, modele: 'pantalon' }), params: { longueur: 1 }, ranges: { longueur: [0, 1] }, labels: { longueur: 'Évasé' }, garment: true },
   // Formes
   ...Object.entries(formes).map(([id, build]) => ({ id, cat: 'Formes', name: { cube: 'Cube', sphere: 'Sphère', cylindre: 'Cylindre', cone: 'Cône', pyramide: 'Pyramide', tore: 'Anneau', plaque: 'Plaque' }[id], build, params: { s: id === 'plaque' ? 1.2 : 0.6 }, ranges: { s: [0.05, 60] }, labels: { s: 'Taille' } })),

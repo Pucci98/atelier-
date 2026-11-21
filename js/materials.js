@@ -43,8 +43,27 @@ export const MATERIALS = [
   { id: 'mannequin', name: 'Mannequin mat', cat: 'Corps', desc: 'Finition mate gris chaud, comme un mannequin de galerie.', tex: ['plaster', 0xC9C2B8], rough: 0.6, world: 2 },
   { id: 'mannequin-noir', name: 'Mannequin noir', cat: 'Corps', desc: 'Noir satiné, silhouette graphique.', tex: ['plaster', 0x222224], rough: 0.4, world: 2 },
   { id: 'platre', name: 'Plâtre sculpté', cat: 'Corps', desc: 'Plâtre blanc, rendu de maquette d’architecte.', tex: ['plaster', 0xF1EEE8], rough: 0.9, world: 2 },
+  { id: 'or', name: 'Or', cat: 'Métal', desc: 'Or jaune brossé, lumineux.', tex: ['brushed', 0xD9B04A], rough: 0.22, metal: 1, world: 0.8 },
+  { id: 'chrome', name: 'Chrome', cat: 'Métal', desc: 'Chrome miroir, reflets nets.', tex: ['brushed', 0xEDEDED], rough: 0.05, metal: 1, world: 0.8 },
+  { id: 'rouille', name: 'Acier corten', cat: 'Métal', desc: 'Acier patiné rouille, brut et chaud.', tex: ['concrete', 0x8A4A2A], rough: 0.85, metal: 0.3, world: 1.5 },
+  { id: 'plastique-blanc', name: 'Plastique blanc', cat: 'Synthétique', desc: 'Polymère blanc satiné, design produit.', tex: ['plaster', 0xF4F4F2], rough: 0.32, world: 1 },
+  { id: 'plastique-noir', name: 'Plastique noir', cat: 'Synthétique', desc: 'Noir mat technique.', tex: ['plaster', 0x1C1C1E], rough: 0.45, world: 1 },
+  { id: 'laque-rouge', name: 'Laque rouge', cat: 'Synthétique', desc: 'Laque brillante rouge profond.', tex: ['plaster', 0xA3211B], rough: 0.08, world: 1 },
+  { id: 'laque-bleue', name: 'Laque bleu nuit', cat: 'Synthétique', desc: 'Laque brillante bleu profond.', tex: ['plaster', 0x1B2F5C], rough: 0.08, world: 1 },
+  { id: 'ceramique', name: 'Céramique émaillée', cat: 'Argile', desc: 'Grès émaillé blanc crème, brillant.', tex: ['clay', 0xEDE6D8], rough: 0.15, world: 0.8 },
+  { id: 'onyx', name: 'Onyx miel', cat: 'Minéral', desc: 'Onyx translucide miel veiné.', tex: ['marble', 0xE6CFA0, 0x9C6A32], rough: 0.08, world: 1.4 },
+  { id: 'marbre-vert', name: 'Marbre vert', cat: 'Minéral', desc: 'Vert des Alpes veiné de blanc.', tex: ['marble', 0x1F4A39, 0xD8E6DC], rough: 0.1, world: 1.4 },
+  { id: 'pierre-volcanique', name: 'Pierre de lave', cat: 'Minéral', desc: 'Basalte sombre alvéolé.', tex: ['stone', 0x3B3836], rough: 0.95, world: 1.5 },
+  { id: 'bouleau', name: 'Bouleau', cat: 'Bois', desc: 'Bois très clair, scandinave.', tex: ['wood', 0xE4CFAE, 0xC9AE86, { grain: 9 }], rough: 0.6, world: 2.2 },
+  { id: 'teck', name: 'Teck', cat: 'Bois', desc: 'Teck doré huilé, bois de yacht.', tex: ['wood', 0x9A6A3C, 0x5E3B1E, { grain: 8 }], rough: 0.45, world: 2.2 },
+  { id: 'soie', name: 'Soie', cat: 'Textile', desc: 'Soie ivoire fluide, reflets nacrés.', tex: ['weave', 0xEFE6D6, { tight: 220, contrast: 0.04 }], rough: 0.35, sheen: 1, sheenColor: 0xFFFFFF, world: 0.5 },
+  { id: 'cachemire', name: 'Cachemire', cat: 'Textile', desc: 'Maille douce camel.', tex: ['weave', 0xB88A5C, { tight: 70, contrast: 0.1 }], rough: 1, sheen: 0.6, sheenColor: 0xE0C3A0, world: 0.5 },
+  { id: 'tweed', name: 'Tweed', cat: 'Textile', desc: 'Laine tissée chinée, tailleur.', tex: ['weave', 0x6B5E4E, { tight: 110, contrast: 0.28 }], rough: 1, world: 0.5 },
+  { id: 'satin-noir', name: 'Satin noir', cat: 'Textile', desc: 'Satin noir lustré, soirée.', tex: ['weave', 0x141416, { tight: 240, contrast: 0.03 }], rough: 0.3, sheen: 1, sheenColor: 0x8899AA, world: 0.5 },
+  { id: 'cuir-blanc', name: 'Cuir blanc', cat: 'Textile', desc: 'Cuir lisse blanc cassé.', tex: ['leather', 0xE8E2D6], rough: 0.5, world: 0.8 },
   { id: 'verre', name: 'Verre clair', cat: 'Verre', desc: 'Verre extra-clair, transparent.', glass: { color: 0xffffff, rough: 0.02 } },
   { id: 'verre-fume', name: 'Verre fumé', cat: 'Verre', desc: 'Verre bronze fumé, ambiance feutrée.', glass: { color: 0x8a7a66, rough: 0.05 } },
+  { id: 'verre-teinte', name: 'Verre bleu', cat: 'Verre', desc: 'Verre teinté bleu océan.', glass: { color: 0x7FB6D8, rough: 0.03 } },
   { id: 'verre-depoli', name: 'Verre dépoli', cat: 'Verre', desc: 'Verre sablé, lumière diffuse.', glass: { color: 0xffffff, rough: 0.45 } },
 ];
 
@@ -84,7 +103,7 @@ function texture(recipe) {
   if (!worker) return local();
   return new Promise(res => { const id = ++wid; pending.set(id, d => res(d || generate(recipe[0], recipe.slice(1)))); worker.postMessage({ id, recipe }); });
 }
-export function getMaterialDef(id) { return MATERIALS.find(m => m.id === id) || (id === 'terrain' ? { id, name: 'Terrain naturel', cat: 'Nature', desc: 'Couleurs selon l’altitude et la pente.' } : null); }
+export function getMaterialDef(id) { if (id?.startsWith('c:')) return { id, name: 'Matière libre', cat: 'Sur mesure', desc: 'Couleur, brillance et métal réglés à la main.' }; return MATERIALS.find(m => m.id === id) || (id === 'terrain' ? { id, name: 'Terrain naturel', cat: 'Nature', desc: 'Couleurs selon l’altitude et la pente.' } : null); }
 
 // Matériau partagé par id (les textures sont générées une seule fois)
 export function material(id) {
@@ -93,6 +112,10 @@ export function material(id) {
   if (id === 'terrain') {
     m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
     m.userData.world = 1;
+  } else if (id && id.startsWith('c:')) {
+    const [, col, r, mt, em] = id.split(':');
+    m = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(col), roughness: +r || 0, metalness: +mt || 0, clearcoat: (+r || 0) < 0.2 ? 0.6 : 0 });
+    if (+em > 0) { m.emissive = new THREE.Color(col); m.emissiveIntensity = +em * 3; }
   } else if (id && id.startsWith('#')) {
     m = new THREE.MeshStandardMaterial({ color: new THREE.Color(id), roughness: 0.85 });
   } else {
