@@ -1,7 +1,7 @@
 // Atelier — service hors ligne
 // Fichiers de l'appli : réseau d'abord (toujours la dernière version), cache si pas de connexion.
 // Modèle de suivi des mains et polices : cache d'abord (lourds et stables).
-const CACHE = 'atelier-v8';
+const CACHE = 'atelier-v9';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {

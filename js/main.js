@@ -1155,3 +1155,13 @@ async function startDisplay() {
 
 // enregistrement du service hors ligne (installation sur l'écran d'accueil)
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
+
+/* écran de démarrage : un toucher le passe */
+{
+  const sp = document.getElementById('splash');
+  if (sp) {
+    let seen = false; try { seen = sessionStorage.getItem('atelier:intro') === '1'; sessionStorage.setItem('atelier:intro', '1'); } catch {}
+    const end = () => { sp.classList.add('gone'); setTimeout(() => sp.remove(), 450); };
+    if (seen) sp.remove(); else { sp.addEventListener('pointerdown', end, { once: true }); setTimeout(end, 7500); }
+  }
+}

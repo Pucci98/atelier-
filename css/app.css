@@ -287,3 +287,18 @@ body.dock-compact:not(.dock-right):not(.dock-hidden) #selPanel, body.dock-compac
 .mat-prev { height: 120px; border-radius: 14px; border: 1px solid var(--line); }
 #hint { position: fixed; z-index: 5; left: 50%; top: 46%; transform: translate(-50%, -50%); text-align: center; color: var(--ink-2); pointer-events: none; }
 #hint b { display: block; font-family: var(--serif); font-weight: 400; font-size: 30px; color: var(--ink); margin-bottom: 6px; }
+
+/* démarrage : cercle lumineux, la lumière le traverse, s'éteint, recommence */
+.brand .mark { width: 22px; height: 22px; flex: none; margin-right: 7px; filter: drop-shadow(0 0 5px #3C9BE8); }
+.brand { display: flex; align-items: center; }
+#splash { position: fixed; inset: 0; z-index: 9999; background: #03060C; display: grid; place-content: center; justify-items: center; gap: 26px; animation: sg-out 7.4s linear forwards; transition: opacity .4s; }
+#splash.gone { opacity: 0 !important; pointer-events: none; }
+#splash svg { width: min(62vw, 300px); height: auto; overflow: visible; }
+#splash .sg-base { opacity: 0; animation: sg-base 7.4s ease-in-out forwards; }
+#splash .sg-arc { opacity: 0; transform-origin: 100px 100px; animation: sg-arc 7.4s linear forwards; }
+#splash .sg-name { font-family: var(--serif); letter-spacing: .38em; font-size: 13px; color: #9FDBFF; opacity: 0; animation: sg-name 7.4s ease forwards; text-shadow: 0 0 12px #2E86D6; padding-left: .38em; }
+@keyframes sg-base { 0% { opacity: 0 } 13% { opacity: .35 } 41% { opacity: .35 } 49% { opacity: 0 } 62% { opacity: .35 } 89% { opacity: .35 } 93%, 100% { opacity: 1 } }
+@keyframes sg-arc { 0%, 13% { opacity: 0; transform: rotate(-90deg) } 14% { opacity: 1; transform: rotate(-90deg) } 40% { opacity: 1; transform: rotate(270deg) } 42%, 62% { opacity: 0; transform: rotate(270deg) } 63% { opacity: 1; transform: rotate(-90deg) } 89% { opacity: 1; transform: rotate(270deg) } 91%, 100% { opacity: 0; transform: rotate(270deg) } }
+@keyframes sg-name { 0%, 70% { opacity: 0 } 85%, 100% { opacity: 1 } }
+@keyframes sg-out { 0%, 94% { opacity: 1 } 100% { opacity: 0 } }
+@media (prefers-reduced-motion: reduce) { #splash, #splash * { animation-duration: 2.4s !important; } }
