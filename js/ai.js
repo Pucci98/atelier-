@@ -1,4 +1,4 @@
-// ALMYGO — le « cerveau » façon Souffle : on décrit ce qu'on veut, Claude le construit en 3D.
+// ALMYGO — le « cerveau » façon Almy : on décrit ce qu'on veut, Claude le construit en 3D.
 // La demande part directement de l'appareil vers l'API d'Anthropic, avec la clé personnelle de l'utilisateur.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';

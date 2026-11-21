@@ -101,7 +101,7 @@ export function setupInput(engine, canvas, ui) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? engine.redo() : engine.undo(); return; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); window.atelierSave?.(); return; }
     if (e.key.toLowerCase() === 'l' && !e.metaKey && !e.ctrlKey) { window.atelierLayers?.(); return; }
-    if (e.key === ' ' || e.key.toLowerCase() === 'j') { if (e.key === ' ' && !e.shiftKey) return; e.preventDefault(); window.atelierSouffle?.(); return; }
+    if (e.key === ' ' || e.key.toLowerCase() === 'j') { if (e.key === ' ' && !e.shiftKey) return; e.preventDefault(); window.atelierAlmy?.(); return; }
     if (!s) return;
     if (e.key === 'Delete' || e.key === 'Backspace') engine.remove(s);
     else if (e.key.toLowerCase() === 'd') engine.duplicate(s);
