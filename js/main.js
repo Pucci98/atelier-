@@ -943,13 +943,39 @@ function openExport() {
     <div class="list">
       <button class="item" data-x="usdz">${svg('ar')}<div><div class="t">Réalité augmentée (USDZ)</div><div class="s">S’ouvre d’un tap sur iPhone et iPad, pour poser la création dans la pièce.</div></div></button>
       <button class="item" data-x="glb">${svg('cube')}<div><div class="t">Modèle 3D (GLB)</div><div class="s">Format universel : Blender, sites 3D, logiciels pros.</div></div></button>
+      <button class="item" data-x="embed">${svg('code')}<div><div class="t">Intégrer à un site</div><div class="s">Un bout de code à coller : ta création en 3D (et en réalité augmentée) sur n’importe quelle page.</div></div></button>
       <button class="item" data-x="code">${svg('code')}<div><div class="t">Code — page web (HTML)</div><div class="s">Un fichier .html qui affiche ta création en 3D : à ouvrir, modifier ou mettre sur un site.</div></div></button>
       <button class="item" data-x="module">${svg('code')}<div><div class="t">Code — description JavaScript</div><div class="s">La scène sous forme de code, pour un développeur ou une autre appli.</div></div></button>
       <button class="item" data-x="project">${svg('file')}<div><div class="t">Projet ALMYGO</div><div class="s">Pour rouvrir et continuer dans ALMYGO, chez toi ou chez quelqu’un d’autre.</div></div></button>
       <button class="item" data-x="photo">${svg('photo')}<div><div class="t">Photo du rendu</div><div class="s">Image de la vue actuelle, pour Insta ou un client.</div></div></button>
     </div><div class="row"><button class="btn ghost" data-close>Fermer</button></div>`, root => {
-    root.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { closeModal(); doShare(b.dataset.x); });
+    root.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { closeModal(); b.dataset.x === 'embed' ? openEmbed() : doShare(b.dataset.x); });
   });
+}
+/* intégrer à un site : <model-viewer> (rotation, zoom, réalité augmentée) + le GLB */
+const MV = 'https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js';
+const embedCode = src => `<script type="module" src="${MV}"></script>\n<model-viewer src="${src}" alt="Création ALMYGO" camera-controls auto-rotate shadow-intensity="1" environment-image="neutral" ar ar-modes="webxr scene-viewer quick-look" style="width:100%;height:420px;background:transparent"></model-viewer>`;
+async function openEmbed() {
+  if (!engine.content.children.length) { toast('La scène est vide'); return; }
+  let file; try { toast('Préparation…', 15000); await new Promise(r => setTimeout(r, 30)); file = await exportGLB(engine); $('#toast').hidden = true; } catch (e) { console.error(e); toast('Export impossible : ' + (e.message || e), 5000); return; }
+  const url = URL.createObjectURL(file), small = file.size <= 2.5 * 1048576, mo = (file.size / 1048576).toFixed(1).replace('.', ',');
+  const A = embedCode('mon-objet.glb');
+  openModal(`<h2>Intégrer à un site</h2>
+    <p><b>Étape 1.</b> Mets le fichier <b>mon-objet.glb</b> (${mo} Mo) sur ton site, au même endroit que ta page.</p>
+    <div class="list"><a class="item" href="${url}" download="mon-objet.glb">${svg('file')}<div><div class="t">Télécharger mon-objet.glb</div></div></a></div>
+    <p style="margin-top:10px"><b>Étape 2.</b> Colle ce code là où tu veux voir l’objet :</p>
+    <textarea id="eCode" readonly rows="6" style="width:100%;font:12px/1.4 ui-monospace,monospace;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px">${esc(A)}</textarea>
+    <div class="row"><button class="btn" id="eCopy">Copier le code</button>${small ? '<button class="btn ghost" id="eAll">Tout dans le code</button>' : ''}<button class="btn ghost" data-close>Fermer</button></div>
+    <p style="font-size:12px;opacity:.5;margin-top:10px">Le visiteur peut tourner l’objet, zoomer, et le poser chez lui en réalité augmentée. Fonctionne avec WordPress, Shopify, Wix, Webflow ou une page HTML.</p>`, root => {
+    const ta = root.querySelector('#eCode');
+    const copy = async txt => { ta.value = txt; try { await navigator.clipboard.writeText(txt); toast('Code copié'); } catch { ta.select(); toast('Sélectionné : copie-le à la main', 3000); } };
+    root.querySelector('#eCopy').onclick = () => copy(A);
+    root.querySelector('#eAll')?.addEventListener('click', async () => {
+      const buf = new Uint8Array(await file.arrayBuffer()); let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+      copy(embedCode('data:model/gltf-binary;base64,' + btoa(bin)).replace(/^/, ''));
+    });
+  });
+  setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
 }
 async function doShare(kind) {
   if (!engine.content.children.length && kind !== 'photo') { toast('La scène est vide'); return; }
