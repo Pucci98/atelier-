@@ -1,4 +1,4 @@
-// ALMIGO — bibliothèque d'éléments constructibles (tout est généré en code, en mètres)
+// ALMYGO — bibliothèque d'éléments constructibles (tout est généré en code, en mètres)
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { material } from './materials.js';

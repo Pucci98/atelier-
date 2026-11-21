@@ -1,4 +1,4 @@
-// ALMIGO — interactions tactiles / souris (sélection, déplacement, rotation, échelle, caméra)
+// ALMYGO — interactions tactiles / souris (sélection, déplacement, rotation, échelle, caméra)
 import * as THREE from 'three';
 
 export function setupInput(engine, canvas, ui) {

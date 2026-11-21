@@ -1,4 +1,4 @@
-// ALMIGO — application
+// ALMYGO — application
 import * as THREE from 'three';
 import { Engine } from './engine.js';
 import { CATALOG, CATEGORIES, getItem } from './library.js';
@@ -62,7 +62,7 @@ $$('[data-i]').forEach(el => el.innerHTML = svg(el.dataset.i));
 let engine;
 try { engine = new Engine($('#scene')); }
 catch (e) {
-  document.body.innerHTML = `<div style="position:fixed;inset:0;display:grid;place-content:center;text-align:center;padding:32px;gap:10px;font-family:var(--sans)"><div class="logo big" style="font-size:52px">ALMIGO</div><p style="color:rgba(239,234,225,.7);max-width:420px">Ce navigateur n’a pas accès à la 3D (WebGL désactivé ou indisponible). Ouvre ALMIGO dans Safari sur iPhone ou iPad, ou dans Chrome / Edge à jour sur ordinateur.</p></div>`;
+  document.body.innerHTML = `<div style="position:fixed;inset:0;display:grid;place-content:center;text-align:center;padding:32px;gap:10px;font-family:var(--sans)"><div class="logo big" style="font-size:52px">ALMYGO</div><p style="color:rgba(239,234,225,.7);max-width:420px">Ce navigateur n’a pas accès à la 3D (WebGL désactivé ou indisponible). Ouvre ALMYGO dans Safari sur iPhone ou iPad, ou dans Chrome / Edge à jour sur ordinateur.</p></div>`;
   throw e;
 }
 window.atelier = engine; // pratique pour déboguer
@@ -106,8 +106,8 @@ function legalHTML(section) {
       <p><b>Ressources techniques</b> : les polices (Google Fonts) et le modèle de suivi des mains (Google, storage.googleapis.com) sont téléchargés depuis leurs serveurs, qui voient donc ton adresse IP.</p>
       <p><b>Aucun cookie, aucune mesure d’audience, aucune publicité.</b></p>
       <p><b>Base légale</b> : ton consentement (caméra, micro), que tu peux retirer à tout moment dans Menu → Confidentialité. <b>Tes droits</b> (accès, rectification, effacement, opposition, retrait du consentement) : écris à annoh63@gmail.com. Tu peux aussi saisir la CNIL (cnil.fr).</p></div>`,
-    cgu: `<h3>Conditions générales d’utilisation</h3><div class="legal"><p>ALMIGO est un prototype gratuit fourni « en l’état », sans garantie de disponibilité ni d’exactitude des dimensions ou des rendus. Il ne remplace pas l’étude d’un professionnel (architecte, bureau d’études) avant des travaux.</p><p>Tu restes responsable des contenus que tu crées, exportes et partages, et tu t’engages à ne pas utiliser ALMIGO à des fins illicites. L’éditeur peut faire évoluer ou interrompre le service à tout moment.</p><p>Droit applicable : droit français.</p></div>`,
-    pi: `<h3>Propriété intellectuelle</h3><div class="legal"><p>L’application ALMIGO (code, interface, design, nom et contenus de la bibliothèque) est © 2026 Annoh Aboidje Chris Fabius. Tous droits réservés. Toute reproduction ou réutilisation sans autorisation est interdite.</p><p><b>Tes créations t’appartiennent</b> : les espaces, scènes et fichiers que tu produis avec ALMIGO sont ta propriété.</p><p>ALMIGO s’appuie sur des bibliothèques libres, utilisées selon leurs licences : three.js (MIT), MediaPipe (Apache 2.0), PeerJS (MIT), polices Instrument (SIL OFL).</p></div>`,
+    cgu: `<h3>Conditions générales d’utilisation</h3><div class="legal"><p>ALMYGO est un prototype gratuit fourni « en l’état », sans garantie de disponibilité ni d’exactitude des dimensions ou des rendus. Il ne remplace pas l’étude d’un professionnel (architecte, bureau d’études) avant des travaux.</p><p>Tu restes responsable des contenus que tu crées, exportes et partages, et tu t’engages à ne pas utiliser ALMYGO à des fins illicites. L’éditeur peut faire évoluer ou interrompre le service à tout moment.</p><p>Droit applicable : droit français.</p></div>`,
+    pi: `<h3>Propriété intellectuelle</h3><div class="legal"><p>L’application ALMYGO (code, interface, design, nom et contenus de la bibliothèque) est © 2026 Annoh Aboidje Chris Fabius. Tous droits réservés. Toute reproduction ou réutilisation sans autorisation est interdite.</p><p><b>Tes créations t’appartiennent</b> : les espaces, scènes et fichiers que tu produis avec ALMYGO sont ta propriété.</p><p>ALMYGO s’appuie sur des bibliothèques libres, utilisées selon leurs licences : three.js (MIT), MediaPipe (Apache 2.0), PeerJS (MIT), polices Instrument (SIL OFL).</p></div>`,
   };
   return section ? S[section] : Object.values(S).join('');
 }
@@ -116,7 +116,7 @@ function showLegal(section) { openModal(`<h2>Infos légales</h2>${legalHTML(sect
 function askConsent() {
   return new Promise(res => {
     openModal(`<h2>Caméra & micro</h2>
-      <p>Pour créer avec tes mains et ta voix, ALMIGO a besoin de la caméra et du micro. <b>Les images restent sur ton appareil</b> : elles servent uniquement à suivre tes mains.</p>
+      <p>Pour créer avec tes mains et ta voix, ALMYGO a besoin de la caméra et du micro. <b>Les images restent sur ton appareil</b> : elles servent uniquement à suivre tes mains.</p>
       <label class="check"><input type="checkbox" id="cConsent"> <span>J’accepte que la caméra et le micro soient utilisés comme décrit dans la <a class="link" href="#" id="cPriv">politique de confidentialité</a>.</span></label>
       <div class="row"><button class="btn" id="cOk" disabled>Autoriser</button><button class="btn ghost" data-close>Plus tard</button></div>`, root => {
       const cb = root.querySelector('#cConsent'), ok = root.querySelector('#cOk');
@@ -731,7 +731,7 @@ async function command(text, { forceAI = false, fromVoice = false } = {}) {
 
 function brainSetup(pending) {
   openModal(`<h2>Cerveau Verbe</h2>
-    <p>Pour créer <b>n’importe quoi</b> à partir d’une phrase, ALMIGO s’appuie sur Claude, l’IA d’Anthropic, avec ta propre clé API. Tu paies directement à l’usage, en général quelques centimes par création.</p>
+    <p>Pour créer <b>n’importe quoi</b> à partir d’une phrase, ALMYGO s’appuie sur Claude, l’IA d’Anthropic, avec ta propre clé API. Tu paies directement à l’usage, en général quelques centimes par création.</p>
     <p>1. Crée une clé sur <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (Réglages → API Keys).<br>2. Colle-la ici. Elle reste uniquement sur cet appareil.</p>
     <input class="field" id="kKey" type="password" placeholder="sk-ant-…" autocomplete="off" style="font-size:15px;letter-spacing:0;text-transform:none;text-align:left" value="${esc(brain.key)}">
     <div class="optrow"><span>Modèle</span><div class="seg" id="kModel">${MODELS.map(([id, n]) => `<button data-v="${id}" class="${brain.model === id ? 'on' : ''}">${n}</button>`).join('')}</div></div>
@@ -923,7 +923,7 @@ function openExport() {
       <button class="item" data-x="glb">${svg('cube')}<div><div class="t">Modèle 3D (GLB)</div><div class="s">Format universel : Blender, sites 3D, logiciels pros.</div></div></button>
       <button class="item" data-x="code">${svg('code')}<div><div class="t">Code — page web (HTML)</div><div class="s">Un fichier .html qui affiche ta création en 3D : à ouvrir, modifier ou mettre sur un site.</div></div></button>
       <button class="item" data-x="module">${svg('code')}<div><div class="t">Code — description JavaScript</div><div class="s">La scène sous forme de code, pour un développeur ou une autre appli.</div></div></button>
-      <button class="item" data-x="project">${svg('file')}<div><div class="t">Projet ALMIGO</div><div class="s">Pour rouvrir et continuer dans ALMIGO, chez toi ou chez quelqu’un d’autre.</div></div></button>
+      <button class="item" data-x="project">${svg('file')}<div><div class="t">Projet ALMYGO</div><div class="s">Pour rouvrir et continuer dans ALMYGO, chez toi ou chez quelqu’un d’autre.</div></div></button>
       <button class="item" data-x="photo">${svg('photo')}<div><div class="t">Photo du rendu</div><div class="s">Image de la vue actuelle, pour Insta ou un client.</div></div></button>
     </div><div class="row"><button class="btn ghost" data-close>Fermer</button></div>`, root => {
     root.querySelectorAll('[data-x]').forEach(b => b.onclick = () => { closeModal(); doShare(b.dataset.x); });
@@ -951,7 +951,7 @@ async function doShare(kind) {
       <a class="item" id="xSave" href="${url}" download="${esc(file.name)}">${svg('file')}<div><div class="t">Enregistrer</div><div class="s">Dans Fichiers ou Téléchargements</div></div></a>
     </div><div class="row"><button class="btn ghost" data-close>Fermer</button></div>`, root => {
     root.querySelector('#xShare')?.addEventListener('click', async () => {
-      try { await navigator.share({ files: [file], title: 'Ma création ALMIGO' }); closeModal(); }
+      try { await navigator.share({ files: [file], title: 'Ma création ALMYGO' }); closeModal(); }
       catch (e) { if (e.name !== 'AbortError') toast('Partage impossible, utilise Enregistrer', 3500); }
     });
   });
@@ -960,7 +960,7 @@ async function doShare(kind) {
 
 /* ---------- menu ---------- */
 function openMenu() {
-  openModal(`<h2>ALMIGO</h2>
+  openModal(`<h2>ALMYGO</h2>
     <div class="optrow"><span>Fond</span><div class="seg" id="mBg"><button data-v="studio">Studio</button><button data-v="camera">Caméra</button></div></div>
     <div class="optrow"><span>Caméra</span><div class="seg" id="mFacing"><button data-v="user">Avant</button><button data-v="environment">Arrière</button></div></div>
     <div class="optrow"><span>Webcam</span><select id="mCam" style="max-width:190px;background:#1b2633;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:6px"><option value="">Automatique</option></select></div>
@@ -1020,8 +1020,8 @@ function showHelp() {
     <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : pouce et index uniquement. Viser avec l’index, pincer-relâcher pour toucher, pincer-glisser pour déplacer ou tourner la vue, écarter pouce et index pour zoomer, deux mains qui pincent pour la taille et la rotation.</li>
       <li><b>Modeler</b> : sélectionne une forme d’argile, un rocher ou un terrain, puis <b>Modeler</b>. Glisse le doigt sur la matière : gonfler, creuser, étirer, lisser, aplatir, pincer, avec symétrie.</li></ul>
     <h3>À la voix</h3><ul><li>« Crée une pièce de 6 sur 4 », « ajoute un canapé », « en velours vert », « le sol en marbre noir »</li><li>« Plus grand », « tourne », « duplique », « supprime », « annule »</li><li>« Ambiance soir », « style Riviera », « propose-moi quelque chose », « visite »</li></ul>
-    <h3>Écran lié</h3><p>Sur l’ordi, ouvre l’adresse d’ALMIGO suivie de <span class="kbd">#ecran</span>. Un code s’affiche : tape-le dans ${svg('screen').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} sur l’iPhone. Tout ce que tu crées s’affiche en direct.</p>
-    <h3>Installer</h3><p>Dans Safari : bouton Partager → <b>Sur l’écran d’accueil</b>. ALMIGO s’ouvre alors en plein écran comme une vraie appli.</p>
+    <h3>Écran lié</h3><p>Sur l’ordi, ouvre l’adresse d’ALMYGO suivie de <span class="kbd">#ecran</span>. Un code s’affiche : tape-le dans ${svg('screen').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} sur l’iPhone. Tout ce que tu crées s’affiche en direct.</p>
+    <h3>Installer</h3><p>Dans Safari : bouton Partager → <b>Sur l’écran d’accueil</b>. ALMYGO s’ouvre alors en plein écran comme une vraie appli.</p>
     <div class="row"><button class="btn" data-close>Compris</button></div>`);
 }
 
@@ -1107,7 +1107,7 @@ $('#btnMenu').onclick = openMenu;
 
 /* ---------- démarrage ---------- */
 function welcome() {
-  openModal(`<div class="logo big" style="font-size:52px">ALMIGO</div>
+  openModal(`<div class="logo big" style="font-size:52px">ALMYGO</div>
     <p style="margin-top:10px">Un studio blanc, sans limite. Modèle la matière comme de l’argile, fais naître des paysages, des villes, des personnages, des vêtements… <b>au doigt, à la main ou à la voix</b>.</p>
     <p>Une boule d’argile t’attend : touche-la, puis <b>Modeler</b> pour la travailler. Tout le reste est dans la bibliothèque en bas.</p>
     <div class="row"><button class="btn" data-close>Entrer dans l’atelier</button><button class="btn ghost" id="wHelp">Mode d’emploi</button></div>

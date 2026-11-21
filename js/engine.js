@@ -1,4 +1,4 @@
-// ALMIGO — moteur 3D : scène, caméra, ambiances, éléments, sélection, historique
+// ALMYGO — moteur 3D : scène, caméra, ambiances, éléments, sélection, historique
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { material, PALETTES, cloneMaterial } from './materials.js';

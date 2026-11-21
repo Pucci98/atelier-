@@ -1,8 +1,8 @@
-# ALMIGO
+# ALMYGO
 
 Créer des pièces, des maisons, des scènes et des vêtements en 3D, **au doigt, aux mains (caméra) ou à la voix**, depuis n'importe quel écran qui a un navigateur.
 
-## Ce que fait ALMIGO
+## Ce que fait ALMYGO
 
 - **Modeler** : boule, bloc, colonne ou anneau d'argile à travailler au doigt ou à la main (gonfler, creuser, étirer, lisser, aplatir, pincer, symétrie). Les rochers et les terrains se modèlent aussi.
 - **Grands espaces** : collines, massifs, plaines, montagnes, lacs, arbres, forêts, rochers ; quartiers générés, immeubles, tours, maisons, routes. Studio blanc infini, échelle du centimètre au kilomètre.

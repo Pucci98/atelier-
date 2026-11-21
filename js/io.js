@@ -1,4 +1,4 @@
-// ALMIGO — exports 3D (GLB, USDZ), fichier projet, captures, partage
+// ALMYGO — exports 3D (GLB, USDZ), fichier projet, captures, partage
 import * as THREE from 'three';
 
 function stamp() { const d = new Date(); return d.toISOString().slice(0, 16).replace(/[-:T]/g, ''); }
@@ -67,7 +67,7 @@ export async function share(file, title) {
 export async function readProjectFile(file) {
   const text = await file.text();
   const data = JSON.parse(text);
-  if (data.app !== 'atelier') throw new Error('Ce fichier ne vient pas d’ALMIGO.');
+  if (data.app !== 'atelier') throw new Error('Ce fichier ne vient pas d’ALMYGO.');
   return data;
 }
 
@@ -89,13 +89,13 @@ export async function exportCode(engine) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ma création — ALMIGO</title>
+<title>Ma création — ALMYGO</title>
 <style>html,body{margin:0;height:100%;background:${sky};overflow:hidden}canvas{display:block}</style>
 <script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }</script>
 </head>
 <body>
 <script type="module">
-// Scène créée avec ALMIGO — modifie librement ce code.
+// Scène créée avec ALMYGO — modifie librement ce code.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -150,11 +150,11 @@ renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, came
   return new File([html], glb.name.replace('.glb', '.html'), { type: 'text/html' });
 }
 
-// Export en code three.js « pur » : un module JavaScript qui recrée la scène depuis sa description ALMIGO
+// Export en code three.js « pur » : un module JavaScript qui recrée la scène depuis sa description ALMYGO
 export function exportModule(engine) {
   const data = engine.serialize();
-  const js = `// Scène ALMIGO — description complète, réutilisable dans un projet web
-// Chaque élément : type (bibliothèque ALMIGO), paramètres, position (m), rotation (rad), échelle, matières.
+  const js = `// Scène ALMYGO — description complète, réutilisable dans un projet web
+// Chaque élément : type (bibliothèque ALMYGO), paramètres, position (m), rotation (rad), échelle, matières.
 export const scene = ${JSON.stringify({ ambiance: data.ambiance, palette: data.palette, items: data.items.map(({ sculpt, ...it }) => it) }, null, 2)};
 `;
   return new File([js], `atelier-scene-${Date.now()}.js`, { type: 'text/javascript' });

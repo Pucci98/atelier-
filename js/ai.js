@@ -1,4 +1,4 @@
-// ALMIGO — le « cerveau » façon Verbe : on décrit ce qu'on veut, Claude le construit en 3D.
+// ALMYGO — le « cerveau » façon Verbe : on décrit ce qu'on veut, Claude le construit en 3D.
 // La demande part directement de l'appareil vers l'API d'Anthropic, avec la clé personnelle de l'utilisateur.
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -14,7 +14,7 @@ export const brain = {
 
 const MAT_IDS = MATERIALS.map(m => m.id).join(', ');
 function systemPrompt(library) {
-  return `Tu es le moteur de création 3D de l'application « ALMIGO ». L'utilisateur décrit en français ce qu'il veut créer ou modifier. Tu réponds UNIQUEMENT par un objet JSON valide (aucun texte autour, pas de bloc de code).
+  return `Tu es le moteur de création 3D de l'application « ALMYGO ». L'utilisateur décrit en français ce qu'il veut créer ou modifier. Tu réponds UNIQUEMENT par un objet JSON valide (aucun texte autour, pas de bloc de code).
 
 Repère : unités en mètres, Y vers le haut, le sol est à y = 0. Un objet doit reposer sur le sol (son point le plus bas à y = 0) sauf demande contraire. Rotations en degrés. Dimensions réalistes (une chaise ≈ 0,45 m d'assise, une porte ≈ 2,1 m, une voiture ≈ 4,5 m).
 

@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>ALMIGO — ALL MIGHTY GOD</title>
-<meta name="description" content="ALMIGO (ALL MIGHTY GOD) — créer des espaces, des scènes et des vêtements en 3D, à la main et à la voix.">
+<title>ALMYGO — ALL MIGHTY GOD</title>
+<meta name="description" content="ALMYGO (ALL MIGHTY GOD) — créer des espaces, des scènes et des vêtements en 3D, à la main et à la voix.">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-VrGVLSXMiIM3PFZqrynCooeb9LzwduscpFjZ1pRr7Q0=' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' data: blob: https://storage.googleapis.com https://api.anthropic.com https://0.peerjs.com wss://0.peerjs.com https://cdn.jsdelivr.net; object-src 'none'; base-uri 'self'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#11100E">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ALMIGO">
+<meta name="apple-mobile-web-app-title" content="ALMYGO">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -31,7 +31,7 @@
 
 <!-- barre du haut -->
 <header id="top">
-  <div class="brand"><span class="logo">ALMIGO</span><span id="status" class="status"></span></div>
+  <div class="brand"><span class="logo">ALMYGO</span><span id="status" class="status"></span></div>
   <div class="actions">
     <button class="ico" id="btnUndo" aria-label="Annuler" title="Annuler"></button>
     <button class="ico" id="btnRedo" aria-label="Rétablir" title="Rétablir"></button>
@@ -46,7 +46,7 @@
 <!-- dock façon Verbe : tout est rangé sur le côté, l'écran de travail reste libre -->
 <nav id="dock" aria-label="Outils">
   <button class="dk" data-dock="create" title="Créer"><i data-i="plus"></i><span>Créer</span></button>
-  <button class="dk" data-dock="jarvis" title="Demander à ALMIGO"><i data-i="sparkle"></i><span>Verbe</span></button>
+  <button class="dk" data-dock="jarvis" title="Demander à ALMYGO"><i data-i="sparkle"></i><span>Verbe</span></button>
   <button class="dk" data-dock="matieres" title="Matières"><i data-i="swatch"></i><span>Matières</span></button>
   <button class="dk" data-dock="styles" title="Styles et modèles"><i data-i="palette"></i><span>Styles</span></button>
   <button class="dk" data-dock="lumiere" title="Lumière"><i data-i="bulb"></i><span>Lumière</span></button>
@@ -134,10 +134,10 @@
 <!-- écran d'affichage -->
 <div id="displayUI" hidden>
   <div class="display-wait" id="displayWait">
-    <div class="logo big">ALMIGO</div>
+    <div class="logo big">ALMYGO</div>
     <p>Écran d'affichage</p>
     <div class="code" id="displayCode">····</div>
-    <p class="muted">Sur ton iPhone : ALMIGO → <b>Écran lié</b> → tape ce code.</p>
+    <p class="muted">Sur ton iPhone : ALMYGO → <b>Écran lié</b> → tape ce code.</p>
   </div>
   <div class="display-live" id="displayLive" hidden><span class="dot"></span> En direct <button class="btn ghost small" id="displayFollow">Suivre la vue de l'iPhone : oui</button></div>
 </div>
