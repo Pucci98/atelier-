@@ -1,7 +1,7 @@
 // Atelier — écran lié : l'iPhone crée, un autre écran (ordi, TV, tablette) affiche en direct
 const PREFIX = 'atelier-ecran-';
 const ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const code = () => Array.from({ length: 4 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('');
+const code = () => Array.from({ length: 6 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('');
 
 function waitPeer() {
   return new Promise((res, rej) => {
@@ -22,7 +22,10 @@ export async function hostDisplay(onCode, onData, onStatus) {
   let p;
   while (!p && attempt++ < 4) { try { p = await open(); } catch (e) { if (attempt >= 4) throw e; } }
   onCode(p.c);
+  let current = null;
   p.peer.on('connection', conn => {
+    if (current?.open) { conn.on('open', () => conn.close()); return; } // un seul appareil peut piloter l'écran
+    current = conn;
     conn.on('open', () => onStatus('connected'));
     conn.on('data', d => { if (d?.t !== 'ping') onData(d); });
     conn.on('close', () => onStatus('waiting'));

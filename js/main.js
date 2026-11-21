@@ -1060,13 +1060,13 @@ function openLink() {
   }
   openModal(`<h2>Lier un écran</h2>
     <p>1. Sur l’ordinateur, la TV ou une tablette, ouvre :<br><b style="user-select:all;-webkit-user-select:all;word-break:break-all">${esc(url)}</b></p>
-    <p>2. Un code de 4 caractères s’affiche. Tape-le ici :</p>
-    <input class="field" id="lkCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="····">
+    <p>2. Un code de 6 caractères s’affiche. Tape-le ici :</p>
+    <input class="field" id="lkCode" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="····">
     <div class="row"><button class="btn" id="lkGo">Connecter</button><button class="btn ghost" id="lkCopy">Copier l’adresse</button><button class="btn ghost" data-close>Fermer</button></div>`, root => {
     const inp = root.querySelector('#lkCode'); setTimeout(() => inp.focus(), 100);
     root.querySelector('#lkCopy').onclick = async () => { try { await navigator.clipboard.writeText(url); toast('Adresse copiée'); } catch { toast(url, 6000); } };
     root.querySelector('#lkGo').onclick = async () => {
-      const c = inp.value.trim(); if (c.length !== 4) { toast('Le code fait 4 caractères'); return; }
+      const c = inp.value.trim(); if (c.length !== 6) { toast('Le code fait 6 caractères'); return; }
       const btn = root.querySelector('#lkGo'); btn.disabled = true; btn.textContent = 'Connexion…';
       try {
         await linkConnect(c);
@@ -1146,8 +1146,8 @@ async function startDisplay() {
   };
   try {
     await hostDisplay(c => $('#displayCode').textContent = c, msg => {
-      if (msg.t === 'scene') { engine.load(msg.data, { record: false, keepCamera: true }); engine.setSelection(null); $('#displayWait').hidden = true; $('#displayLive').hidden = false; }
-      else if (msg.t === 'cam') remote = msg;
+      if (msg.t === 'scene') { let d; try { d = sanitize(msg.data); } catch { return; } engine.load(d, { record: false, keepCamera: true }); engine.setSelection(null); $('#displayWait').hidden = true; $('#displayLive').hidden = false; }
+      else if (msg.t === 'cam' && Array.isArray(msg.p) && Array.isArray(msg.q)) remote = { p: msg.p.map(Number), q: msg.q.map(Number), fov: Math.min(120, Math.max(20, +msg.fov || 50)) };
       else if (msg.t === 'xf') { const g = engine.content.children.find(x => x.userData.id === msg.id); if (g) { g.position.fromArray(msg.p); g.rotation.y = msg.r; g.scale.fromArray(msg.s); } }
     }, st => { if (st === 'waiting') { $('#displayWait').hidden = false; $('#displayLive').hidden = true; } });
   } catch (e) { $('#displayCode').textContent = '—'; $('#displayWait').querySelector('.muted').textContent = 'Connexion au service de liaison impossible : ' + (e.message || e) + '. Recharge la page.'; }
