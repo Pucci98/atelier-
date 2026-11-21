@@ -1,4 +1,4 @@
-// Atelier — moteur 3D : scène, caméra, ambiances, éléments, sélection, historique
+// ALMIGO — moteur 3D : scène, caméra, ambiances, éléments, sélection, historique
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { material, PALETTES, cloneMaterial } from './materials.js';
@@ -304,7 +304,7 @@ export class Engine extends EventTarget {
       const role = o.userData.role;
       const id = g.userData.mats?.[role] || o.userData.fixedMat || this.palette[role] || DEFAULT_MATS[role];
       let m = material(id);
-      if (o.userData.look && !g.userData.mats?.[role]) { // finition demandée par Jarvis (brillant, métal, lumineux)
+      if (o.userData.look && !g.userData.mats?.[role]) { // finition demandée par Verbe (brillant, métal, lumineux)
         const L = o.userData.look, key = id + '|' + [L.r, L.m, L.e].join('|');
         lookCache[key] ||= Object.assign(cloneMaterial(m), {}, L.r != null ? { roughness: L.r } : {}, L.m != null ? { metalness: L.m } : {});
         if (L.e && !lookCache[key].emissive?.getHex()) { lookCache[key].emissive = new THREE.Color(L.e); lookCache[key].emissiveIntensity = 1.5; }

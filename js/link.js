@@ -1,4 +1,4 @@
-// Atelier — écran lié : l'iPhone crée, un autre écran (ordi, TV, tablette) affiche en direct
+// ALMIGO — écran lié : l'iPhone crée, un autre écran (ordi, TV, tablette) affiche en direct
 const PREFIX = 'atelier-ecran-';
 const ALPHA = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const code = () => Array.from({ length: 6 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('');
