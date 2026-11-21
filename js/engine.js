@@ -390,6 +390,13 @@ export class Engine extends EventTarget {
 
   /* ---------- lancer de rayon ---------- */
   ndc(x, y) { const r = this.canvas.getBoundingClientRect(); return new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1); }
+  setLite(on) {
+    this.lite = on; const dpr = window.devicePixelRatio, max = on ? Math.min(dpr, 1.25) : Math.min(dpr, 2);
+    if (this.quality) { this.quality.max = max; this.quality.pr = Math.min(this.quality.pr, max); }
+    this.renderer.setPixelRatio(Math.min(this.quality?.pr || max, max)); this.renderer.shadowMap.enabled = !on;
+    this.scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
+    this.resize?.(); this.touch?.();
+  }
   layerOf(g) { return this.layers.find(l => l.id === g.userData.layer) || this.layers[0]; }
   applyLayer(g) { g.visible = this.layerOf(g).visible; }
   refreshLayers() { for (const g of this.content.children) this.applyLayer(g); if (this.selected && !this.selected.visible) this.setSelection(null); this.dispatchEvent(new Event('layers')); }

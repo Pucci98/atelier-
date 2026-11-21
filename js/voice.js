@@ -43,6 +43,7 @@ function findLongest(t, table) {
   return best;
 }
 
+const axisOf = w => ({ haut: 'y', bas: 'y', large: 'xz', etroit: 'xz', fin: 'xz', epais: 'xz', long: 'xz', court: 'xz' })[w] || '';
 function numbers(t) {
   const out = [];
   for (const tok of t.replace(/,/g, '.').split(' ')) {
@@ -52,26 +53,98 @@ function numbers(t) {
   return out;
 }
 
-// Analyse une phrase et renvoie une liste d'actions
+// nombres en toutes lettres (jusqu'à 99) : « quarante cinq » → 45
+const TENS = { vingt: 20, trente: 30, quarante: 40, cinquante: 50, soixante: 60 };
+function frNum(str) {
+  const tk = str.trim().split(' ').filter(w => w !== 'et'); let n = 0, ok = false;
+  for (let i = 0; i < tk.length; i++) { const w = tk[i];
+    if (/^\d+([.,]\d+)?$/.test(w)) { n += parseFloat(w.replace(',', '.')); ok = true; }
+    else if (w === 'quatre' && tk[i + 1] === 'vingt') { n += 80; i++; ok = true; }
+    else if (w === 'vingts') { n += 0; }
+    else if (TENS[w] != null) { n += TENS[w]; ok = true; }
+    else if (NUM[w] != null && !['un', 'une'].includes(w)) { n += NUM[w]; ok = true; }
+    else if (w === 'cent') { n = (n || 1) * 100; ok = true; }
+    else if (w === 'demi') { n += 0.5; ok = true; } }
+  return ok ? n : null;
+}
+const FILLERS = /\b(s il te plait|s il vous plait|stp|svp|please|peux tu|pourrais tu|tu peux|pouvez vous|j aimerais|je voudrais bien|moi|maintenant|alors|euh+|ok|allez|vas y|bon|donc)\b/g;
+
+// Analyse une phrase (ou plusieurs : « …, puis … ») et renvoie la liste d'actions
 export function parseCommand(raw) {
+  const t = norm(raw).replace(FILLERS, ' ').replace(/\s+/g, ' ').trim();
+  if (!t) return [];
+  const parts = t.split(/ (?:puis|et puis|ensuite|apres|et|avec)(?= (?:un|une|des|le|la|les|mets|met|ajoute|fais|passe|en|plus|monte|tourne|duplique|annule|supprime|cree|pose)\b) /).map(x => x.trim()).filter(Boolean);
+  if (parts.length > 1) {
+    const all = parts.map(x => parseOne(x));
+    if (all.every(a => a.length)) return all.flat();
+  }
+  return parseOne(t);
+}
+
+function parseOne(raw) {
   const t = norm(raw);
   if (!t) return [];
   const has = (...w) => w.some(x => new RegExp(`(^| )${x}( |$)`).test(t));
+  // calques
+  if (/calques?/.test(t) || has('verrouille', 'deverrouille')) {
+    if (/sur (un|le|ce) (nouveau )?calque/.test(t)) return [{ do: 'layer', value: 'moveSel' }];
+    if (has('nouveau', 'nouvelle', 'ajoute', 'cree', 'creer')) return [{ do: 'layer', value: 'add' }];
+    if (has('cache', 'masque', 'invisible')) return [{ do: 'layer', value: 'hide' }];
+    if (has('montre', 'affiche', 'revele')) return [{ do: 'layer', value: 'show' }];
+    if (has('deverrouille', 'debloque')) return [{ do: 'layer', value: 'unlock' }];
+    if (has('verrouille', 'bloque', 'fige')) return [{ do: 'layer', value: 'lock' }];
+    return [{ do: 'layer', value: 'open' }];
+  }
+  if (has('verrouille', 'fige')) return [{ do: 'layer', value: 'lock' }];
+  if (has('detache', 'libere', 'decolle', 'flotte', 'fais flotter') || /en l air/.test(t)) return [{ do: 'free', value: true }];
+  if (/(pose|repose|remets?|colle|redescends?).* au sol/.test(t)) return [{ do: 'free', value: false }];
+  if (/^(selectionne|choisis|prends|attrape) (tout|tous)/.test(t)) return [{ do: 'selectAll' }];
+  if (/^(deselectionne|deselectionner|lache|ne selectionne|plus rien)/.test(t)) return [{ do: 'deselect' }];
+  { const m = t.match(/^(?:selectionne|choisis|prends|attrape|montre moi) (?:le |la |l |les |un |une )?(.+)$/); if (m) { const it = findLongest(m[1], ITEM_WORDS); if (it) return [{ do: 'selectItem', value: it }]; } }
+  if (has('sauvegarde', 'sauvegarder', 'enregistre', 'enregistrer', 'garde ca')) return [{ do: 'save' }];
+  if (has('dezoome', 'recule la vue', 'plus loin')) return [{ do: 'zoom', value: 1.3 }];
+  if (has('zoome', 'zoom', 'rapproche la vue', 'plus pres')) return [{ do: 'zoom', value: 0.75 }];
+  if (has('modelage') || /mode (modelage|sculpture)/.test(t)) return [{ do: 'sculpt' }];
+  if (/transparent|translucide/.test(t)) return [{ do: 'material', value: 'verre' }];
+  // rotation précise : « tourne de quarante cinq degres »
+  if (/(tourn|pivot|rotation|oriente)/.test(t)) {
+    const m = t.match(/([a-z0-9., ]+?) degres?/); const deg = m ? frNum(m[1].replace(/^.*\b(de|a|d|sur) /, '')) : null;
+    return [{ do: 'rotate', value: has('droite') ? -1 : 1, deg: deg ?? undefined }];
+  }
+  // « deux fois plus petit », « double la taille », « moitié »
+  { const m = t.match(/([a-z0-9]+) fois plus (grand|gros|petit|haut|large|bas|fin)/);
+    if (m) { const n = frNum(m[1]) || 2; const big = ['grand', 'gros', 'haut', 'large'].includes(m[2]); return [{ do: 'scale', value: big ? n : 1 / n, axis: axisOf(m[2]) }]; } }
+  if (has('double', 'double la taille', 'x2')) return [{ do: 'scale', value: 2 }];
+  if (has('moitie', 'divise par deux', 'demi taille')) return [{ do: 'scale', value: 0.5 }];
+  // « dix centimetres plus haut », « a deux metres »
+  { const m = t.match(/([a-z0-9., ]+?) (centimetres?|cm|metres?|m) (plus haut|plus bas|a gauche|a droite|plus loin|plus pres|en avant|en arriere|vers le haut|vers le bas|vers la gauche|vers la droite)/);
+    if (m) { const n = frNum(m[1].replace(/^.*\b(de|a|d|sur|monte|descends|decale|deplace|avance|recule) /, '')); if (n) { const d = /^c/.test(m[2]) || m[2] === 'cm' ? n / 100 : n, w = m[3];
+      if (/haut/.test(w)) return [{ do: 'lift', value: d }]; if (/bas/.test(w)) return [{ do: 'lift', value: -d }];
+      if (/gauche/.test(w)) return [{ do: 'nudge', value: [-d, 0] }]; if (/droite/.test(w)) return [{ do: 'nudge', value: [d, 0] }];
+      if (/(loin|arriere)/.test(w)) return [{ do: 'nudge', value: [0, -d] }]; return [{ do: 'nudge', value: [0, d] }]; } } }
+  { const m = t.match(/(deplace|decale|pousse|bouge)[a-z]* (?:le |la |l |les )?(?:un peu |plus )?(?:vers |a |sur )?(?:la |le )?(gauche|droite|avant|arriere|haut|bas)/);
+    if (m) { const w = m[2]; const d = /un peu/.test(t) ? 0.15 : 0.3;
+      if (w === 'gauche') return [{ do: 'nudge', value: [-d, 0] }]; if (w === 'droite') return [{ do: 'nudge', value: [d, 0] }];
+      if (w === 'avant') return [{ do: 'nudge', value: [0, d] }]; if (w === 'arriere') return [{ do: 'nudge', value: [0, -d] }];
+      return [{ do: 'lift', value: w === 'haut' ? d : -d }]; } }
+  { const m = t.match(/(?:rends|fais)? ?(?:le |la |l )?(un peu |beaucoup |tres )?plus (haut|large|fin|epais|bas|etroit|long|court|gros|grand|petit)$/);
+    if (m) { const k = m[1] === 'beaucoup ' || m[1] === 'tres ' ? 1.6 : m[1] ? 1.1 : 1.25; const up = ['haut', 'large', 'epais', 'long', 'gros', 'grand'].includes(m[2]);
+      return [{ do: 'scale', value: up ? k : 1 / k, axis: axisOf(m[2]) }]; } }
   if (has('annule', 'annuler', 'retour', 'defais')) return [{ do: 'undo' }];
   if (has('retablis', 'refais')) return [{ do: 'redo' }];
   if (has('supprime', 'efface', 'enleve', 'retire', 'jette') && !has('tout')) return [{ do: 'delete' }];
   if (has('efface tout', 'vide tout', 'nouveau projet', 'recommence')) return [{ do: 'clear' }];
-  if (has('duplique', 'copie', 'clone', 'encore un', 'encore une')) return [{ do: 'duplicate' }];
+  if (has('duplique', 'dupliquer', 'copie', 'clone', 'encore un', 'encore une')) return [{ do: 'duplicate' }];
   if (has('visite', 'visiter', 'promene', 'entre dans')) return [{ do: 'walk' }];
   if (has('modele', 'modeler', 'sculpte', 'sculpter', 'faconne')) return [{ do: 'sculpt' }];
   for (const [tool, words] of [['tirer', ['gonfle', 'tire', 'bombe']], ['creuser', ['creuse', 'enfonce']], ['lisser', ['lisse', 'adoucis']], ['aplatir', ['aplatis', 'rabote']], ['saisir', ['etire', 'allonge']], ['pincer', ['pince', 'affine']]])
     if (has(...words) && !has('plus grand')) return [{ do: 'tool', value: tool }];
-  if (has('vue d ensemble', 'recentre', 'vue globale', 'montre tout', 'cadre')) return [{ do: 'frame' }];
+  if (has('vue d ensemble', 'recentre', 'vue globale', 'montre tout', 'cadre', 'reviens au centre', 'au centre')) return [{ do: 'frame' }];
   if (has('exporte', 'envoie', 'partage')) return [{ do: 'export' }];
   if (has('photo', 'capture', 'rendu')) return [{ do: 'shot' }];
 
-  for (const [k, words] of [['jour', ['jour', 'journee', 'midi', 'lumiere naturelle']], ['doree', ['golden', 'coucher de soleil', 'heure doree', 'fin de journee']], ['soir', ['soir', 'nuit', 'tamise']], ['studio', ['studio']], ['galerie', ['galerie', 'musee']]])
-    if (has('ambiance', 'lumiere', 'eclairage', 'mode') && words.some(w => t.includes(w))) return [{ do: 'ambiance', value: k }];
+  for (const [k, words] of [['jour', ['jour', 'journee', 'midi', 'lumiere naturelle']], ['doree', ['golden', 'coucher de soleil', 'heure doree', 'fin de journee', 'chaude', 'chaleureuse', 'doree']], ['soir', ['soir', 'nuit', 'tamise']], ['studio', ['studio']], ['galerie', ['galerie', 'musee']]])
+    if ((has('ambiance', 'lumiere', 'eclairage', 'eclaire', 'mode', 'luminosite') || /^(je veux|mets|passe|fais|change)( en| la| le| de la| du| a la)? ?(nuit|jour|soir|golden)/.test(t)) && words.some(w => t.includes(w))) return [{ do: 'ambiance', value: k }];
 
   const pal = PALETTES.find(p => t.includes(norm(p.name)) || (p.id !== 'nuit' && t.includes(p.id)));
   if (pal && has('style', 'palette', 'ambiance', 'facon', 'esprit', 'en', 'tout en')) return [{ do: 'palette', value: pal.id }];
@@ -103,20 +176,20 @@ export function parseCommand(raw) {
   const itemRole = definite ? ({ mur: 'mur', sol: 'sol', piece: 'mur' })[item] : null;
   const col = findLongest(t, COLOR_WORDS);
   const role = findLongest(t, ROLE_WORDS);
-  if (mat && (has('en', 'matiere', 'materiau', 'texture', 'finition', 'habille', 'recouvre', 'passe', 'mets du', 'mets le') || acts.length)) acts.push({ do: 'material', value: mat, role: role || itemRole });
+  if (mat && (t.split(' ').length <= 3 || has('en', 'matiere', 'materiau', 'texture', 'finition', 'habille', 'recouvre', 'passe', 'mets du', 'mets le') || acts.length)) acts.push({ do: 'material', value: mat, role: role || itemRole });
   else if (col != null && (has('couleur', 'peins', 'peint', 'peinture', 'en', 'passe', 'teinte') || acts.length)) acts.push({ do: 'material', value: '#' + col.toString(16).padStart(6, '0'), role: role || itemRole });
 
   if (!acts.length) {
     if (has('plus grand', 'agrandis', 'grossis', 'plus gros', 'augmente')) acts.push({ do: 'scale', value: 1.25 });
     else if (has('plus petit', 'reduis', 'retrecis', 'diminue')) acts.push({ do: 'scale', value: 0.8 });
-    else if (has('tourne', 'pivote', 'rotation')) acts.push({ do: 'rotate', value: has('gauche') ? 1 : -1 });
+    else if (has('tourne', 'tourner', 'pivote', 'rotation')) acts.push({ do: 'rotate', value: has('gauche') ? 1 : -1 });
     else if (has('monte', 'leve', 'souleve')) acts.push({ do: 'lift', value: 0.1 });
     else if (has('descends', 'baisse', 'abaisse')) acts.push({ do: 'lift', value: -0.1 });
     else if (has('avance', 'rapproche')) acts.push({ do: 'nudge', value: [0, 0.3] });
     else if (has('recule', 'eloigne')) acts.push({ do: 'nudge', value: [0, -0.3] });
     else if (has('a gauche')) acts.push({ do: 'nudge', value: [-0.3, 0] });
     else if (has('a droite')) acts.push({ do: 'nudge', value: [0.3, 0] });
-    else if (has('propose', 'suggere', 'idee', 'inspire')) acts.push({ do: 'suggest' });
+    else if (has('propose', 'suggere', 'idee', 'inspire') || /^change de style|^autre style/.test(t)) acts.push({ do: 'suggest' });
   }
   return acts;
 }

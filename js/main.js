@@ -246,10 +246,28 @@ function runActions(acts) {
         out.push(`${ROLE_LABEL[role]} → ${matName(a.value)}`);
         break;
       }
-      case 'scale': if (s) { s.scale.multiplyScalar(a.value); engine.commit(); out.push(a.value > 1 ? 'Agrandi' : 'Réduit'); } break;
-      case 'rotate': if (s) { s.rotation.y += a.value * Math.PI / 4; engine.commit(); out.push('Pivoté'); } break;
+      case 'scale': if (s) { if (a.axis === 'y') s.scale.y *= a.value; else if (a.axis === 'xz') { s.scale.x *= a.value; s.scale.z *= a.value; } else s.scale.multiplyScalar(a.value); engine.commit(); out.push(a.value > 1 ? 'Agrandi' : 'Réduit'); } break;
+      case 'rotate': if (s) { s.rotation.y += a.deg != null ? a.value * a.deg * Math.PI / 180 : a.value * Math.PI / 4; engine.commit(); out.push('Pivoté'); } break;
       case 'lift': if (s) { s.position.y = Math.max(0, s.position.y + a.value); engine.commit(); out.push(a.value > 0 ? 'Monté' : 'Descendu'); } break;
       case 'nudge': if (s) { const az = engine.orbit.az; const f = new THREE.Vector3(-Math.sin(az), 0, -Math.cos(az)), r = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az)); s.position.addScaledVector(r, a.value[0]).addScaledVector(f, a.value[1]); engine.commit(); out.push('Déplacé'); } break;
+      case 'layer': {
+        const L = engine.layerOf(s || engine.content.children[0] || { userData: {} });
+        const act = engine.layers.find(l => l.id === engine.activeLayer) || engine.layers[0];
+        if (a.value === 'add') { engine.addLayer(); out.push('Nouveau calque'); }
+        else if (a.value === 'moveSel') { if (s) { const id = engine.addLayer(); s.userData.layer = id; engine.refreshLayers(); engine.commit(); out.push('Sur un nouveau calque'); } else out.push('Sélectionne un élément'); }
+        else if (a.value === 'hide') { act.visible = false; engine.refreshLayers(); engine.commit(); out.push('Calque masqué'); }
+        else if (a.value === 'show') { engine.layers.forEach(l => l.visible = true); engine.refreshLayers(); engine.commit(); out.push('Calques affichés'); }
+        else if (a.value === 'lock') { act.locked = true; engine.refreshLayers(); engine.commit(); out.push('Calque verrouillé'); }
+        else if (a.value === 'unlock') { engine.layers.forEach(l => l.locked = false); engine.refreshLayers(); engine.commit(); out.push('Calques déverrouillés'); }
+        else { openInspector('calques'); out.push('Calques'); }
+        break;
+      }
+      case 'free': if (s) { s.userData.free = a.value; if (!a.value) s.position.y = engine.groundY(s.position.x, s.position.z, s); else if (s.position.y < 0.01) s.position.y = 0.3; engine.commit(); out.push(a.value ? 'Détaché du sol' : 'Reposé au sol'); } else out.push('Sélectionne un élément'); break;
+      case 'selectAll': out.push('Sélection : un élément à la fois'); break;
+      case 'deselect': engine.setSelection(null); out.push('Désélectionné'); break;
+      case 'selectItem': { const g = [...engine.content.children].reverse().find(x => x.userData.type === a.value && x.visible); if (g) { engine.setSelection(g); out.push(getItem(a.value).name + ' sélectionné'); } else out.push('Aucun élément de ce type'); break; }
+      case 'save': saveProjectPrompt(); out.push('Sauvegarde'); break;
+      case 'zoom': engine.orbit.radius = Math.max(0.3, Math.min(8000, engine.orbit.radius * a.value)); engine.touch?.(); out.push(a.value < 1 ? 'Zoom' : 'Dézoom'); break;
       case 'suggest': suggest(); out.push('Propositions'); break;
       case 'sculpt': if (s && engine.sculptor.canSculpt(s)) { setSculpt(true); out.push('Modelage'); } else out.push('Sélectionne une forme à modeler'); break;
       case 'tool': if (!engine.sculptor.active && s && engine.sculptor.canSculpt(s)) setSculpt(true); engine.sculptor.tool = a.value; window._sculptRefresh?.(); out.push('Outil ' + a.value); break;
@@ -704,7 +722,11 @@ async function command(text, { forceAI = false, fromVoice = false } = {}) {
     const acts = parseCommand(text);
     if (acts.length) { const done = runActions(acts); bubble(`<span class="ok">✓</span> ${esc(done || text)}`, 2600); return; }
   }
-  if (!brain.key) { brainSetup(text); return; }
+  if (!brain.key) {
+    bubble(`« ${esc(text)} » — sans clé, Almy comprend les ordres simples. Essaie : <i>ajoute une chaise en bois</i>, <i>mets-la en rouge</i>, <i>plus grand</i>. <b class="link" data-key="1">Activer la création libre</b>`, 9000);
+    $('#voiceBubble').onclick = e => { if (e.target.dataset.key) { $('#voiceBubble').hidden = true; brainSetup(text); } };
+    return;
+  }
   const target = engine.selected?.userData.type === 'ia' && (forceAI || cmdForSel) ? engine.selected : null;
   $('#cmd').classList.add('busy'); bubble(`<span class="live">Almy construit : ${esc(text)}…</span>`, 0);
   cmdAbort = new AbortController();
@@ -968,6 +990,7 @@ function openMenu() {
     <div class="optrow"><span>Taille des outils</span><div class="seg" id="mDockS"><button data-v="0">Normale</button><button data-v="1">Petite</button></div></div>
     <div class="optrow"><span>Murs qui s’effacent</span><div class="seg" id="mCut"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="optrow"><span>Sons de confirmation</span><div class="seg" id="mSound"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
+    <div class="optrow"><span>Mode léger</span><div class="seg" id="mLite"><button data-v="auto">Auto</button><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="optrow"><span>Grille au sol</span><div class="seg" id="mGrid"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="list" style="margin-top:14px">
       <button class="item" data-m="jarvis">${svg('sparkle')}<div><div class="t">Cerveau Almy</div><div class="s">${brain.key ? 'Actif. Changer de clé ou de modèle.' : 'Créer n’importe quoi à partir d’une phrase.'}</div></div></button>
@@ -994,6 +1017,7 @@ function openMenu() {
     seg('#mFacing', facing, async v => { facing = v; const had = !!stream; stopCamera(); if (had) { try { await startCamera(); if (hands?.active) hands.mirror = facing === 'user'; } catch (e) { toast(e.message); } } });
     seg('#mCut', engine.cutaway ? 1 : 0, v => engine.cutaway = v === '1');
     seg('#mSound', soundOn ? 1 : 0, v => { soundOn = v === '1'; try { localStorage.setItem('atelier:son', v); } catch { } if (soundOn) playTick(); });
+    seg('#mLite', litePref(), v => { try { localStorage.setItem('atelier:lite', v); } catch { } applyLite(); });
     seg('#mGrid', engine.showGrid === false ? 0 : 1, v => { engine.showGrid = v === '1'; engine.applyBackdrop(); });
     root.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
       const m = b.dataset.m; closeModal();
@@ -1106,12 +1130,27 @@ $('#btnShare').onclick = openExport;
 $('#btnMenu').onclick = openMenu;
 
 /* ---------- démarrage ---------- */
+const GUIDE = [
+  ['Parle ou écris', 'Touche le micro et dis : « ajoute un arbre », « mets-le en rouge », « plus grand », « annule ». Ou tape dans la barre Almy.'],
+  ['À la main', 'Active la caméra : pince pouce + index pour attraper et déplacer, écarte-les pour zoomer. Une seule main suffit.'],
+  ['Au doigt', 'Touche un objet pour le choisir, glisse pour le déplacer, deux doigts pour zoomer. Le ✓ « Modeler » transforme l’argile.'],
+  ['Tout le reste', 'Matières, styles, lumière et calques sont dans la barre sur le côté. Exporter, sauvegarder : en haut. Rien ne te gêne : tu peux la ranger.'],
+];
+function miniGuide(i = 0) {
+  const [h, p] = GUIDE[i], last = i === GUIDE.length - 1;
+  openModal(`<div class="logo" style="font-size:15px;opacity:.55;margin-bottom:6px">${i + 1} / ${GUIDE.length}</div><h2 style="margin:0 0 8px">${h}</h2><p>${p}</p>
+    <div class="row"><button class="btn" id="gNext">${last ? 'C’est parti' : 'Suivant'}</button>${last ? '' : '<button class="btn ghost" data-close>Passer</button>'}</div>`, root => {
+    try { localStorage.setItem('atelier:guide', '1'); } catch { }
+    root.querySelector('#gNext').onclick = () => last ? closeModal() : miniGuide(i + 1);
+  });
+}
 function welcome() {
   openModal(`<div class="logo big" style="font-size:52px">ALMYGO</div>
     <p style="margin-top:10px">Un studio blanc, sans limite. Modèle la matière comme de l’argile, fais naître des paysages, des villes, des personnages, des vêtements… <b>au doigt, à la main ou à la voix</b>.</p>
     <p>Une boule d’argile t’attend : touche-la, puis <b>Modeler</b> pour la travailler. Tout le reste est dans la bibliothèque en bas.</p>
-    <div class="row"><button class="btn" data-close>Entrer dans l’atelier</button><button class="btn ghost" id="wHelp">Mode d’emploi</button></div>
+    <div class="row"><button class="btn" id="wGo">Entrer dans l’atelier</button><button class="btn ghost" id="wHelp">Mode d’emploi</button></div>
     <p style="font-size:12px;color:rgba(239,234,225,.38);margin-top:16px">En continuant, tu acceptes les <a class="link" href="#" data-legal="cgu">CGU</a>. La caméra et le micro ne seront activés qu’avec ton accord. <a class="link" href="#" data-legal="mentions">Mentions légales</a> · <a class="link" href="#" data-legal="confidentialite">Confidentialité</a> · <a class="link" href="#" data-legal="pi">Propriété intellectuelle</a></p>`, root => {
+    root.querySelector('#wGo').onclick = () => { let seen = false; try { seen = localStorage.getItem('atelier:guide') === '1'; } catch { } seen ? closeModal() : miniGuide(0); };
     root.querySelector('#wHelp').onclick = showHelp;
     root.querySelectorAll('[data-legal]').forEach(a => a.onclick = e => { e.preventDefault(); showLegal(a.dataset.legal); });
   });
@@ -1165,3 +1204,12 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
     if (seen) sp.remove(); else { sp.addEventListener('pointerdown', end, { once: true }); setTimeout(end, 7500); }
   }
 }
+
+/* mode léger : moins de pixels, pas d'ombres → moins de chauffe, plus de fluidité (auto sur appareils modestes) */
+function litePref() { try { return localStorage.getItem('atelier:lite') || 'auto'; } catch { return 'auto'; } }
+function applyLite() {
+  const p = litePref();
+  const weak = (navigator.deviceMemory && navigator.deviceMemory <= 4) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+  engine.setLite(p === '1' || (p === 'auto' && !!weak));
+}
+applyLite();
