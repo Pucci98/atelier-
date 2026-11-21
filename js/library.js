@@ -711,7 +711,7 @@ function route({ l = 60, w = 12 }) {
 /* ---------- catalogue ---------- */
 // roles : rôles présents → matière par défaut prise dans la palette active
 export const CATALOG = [
-  // créations de Verbe (objet décrit par l'IA, reconstruit à partir de sa description)
+  // créations de Fiat (objet décrit par l'IA, reconstruit à partir de sa description)
   { id: 'ia', cat: 'Créations', name: 'Création', build: p => buildSpec(p.spec || { parties: [] }, part), params: { spec: null } },
   // Modeler
   { id: 'argile', cat: 'Modeler', name: 'Boule d’argile', build: p => argile({ ...p, forme: 'boule' }), params: { s: 0.7 }, sculpt: true },

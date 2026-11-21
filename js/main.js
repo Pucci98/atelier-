@@ -102,7 +102,7 @@ function legalHTML(section) {
       <p><b>Micro</b> : les commandes vocales utilisent la reconnaissance vocale de ton navigateur. Sur iPhone, Apple peut traiter l’audio sur ses serveurs selon ses propres règles (dictée Siri).</p>
       <p><b>Tes créations</b> : elles sont sauvegardées uniquement dans ton navigateur (stockage local). Elles ne quittent ton appareil que si tu les exportes ou les envoies toi-même.</p>
       <p><b>Écran lié</b> : pour relier deux écrans, un serveur de mise en relation (PeerJS) reçoit un identifiant de connexion et l’adresse IP des appareils, puis la scène circule directement entre tes appareils.</p>
-      <p><b>Verbe (facultatif)</b> : si tu actives le cerveau Verbe avec ta clé API, tes demandes écrites ou dictées et la description de la création à modifier sont envoyées directement de ton appareil à Anthropic (Claude) pour être traitées, selon les conditions d’Anthropic. Ta clé reste stockée uniquement sur ton appareil.</p>
+      <p><b>Fiat (facultatif)</b> : si tu actives le cerveau Fiat avec ta clé API, tes demandes écrites ou dictées et la description de la création à modifier sont envoyées directement de ton appareil à Anthropic (Claude) pour être traitées, selon les conditions d’Anthropic. Ta clé reste stockée uniquement sur ton appareil.</p>
       <p><b>Ressources techniques</b> : les polices (Google Fonts) et le modèle de suivi des mains (Google, storage.googleapis.com) sont téléchargés depuis leurs serveurs, qui voient donc ton adresse IP.</p>
       <p><b>Aucun cookie, aucune mesure d’audience, aucune publicité.</b></p>
       <p><b>Base légale</b> : ton consentement (caméra, micro), que tu peux retirer à tout moment dans Menu → Confidentialité. <b>Tes droits</b> (accès, rectification, effacement, opposition, retrait du consentement) : écris à annoh63@gmail.com. Tu peux aussi saisir la CNIL (cnil.fr).</p></div>`,
@@ -205,7 +205,7 @@ async function toggleVoice() {
   if (!hasConsent() && !(await askConsent())) return;
   if (!voice) voice = new Voice((text, final) => {
     if (!final) { bubble(`<span class="live">${esc(text)}</span>`, 0); return; }
-    if (!parseCommand(text).length && !brain.key) { bubble(`« ${esc(text)} » <span class="live">— active Verbe pour créer librement</span>`, 3500); return; }
+    if (!parseCommand(text).length && !brain.key) { bubble(`« ${esc(text)} » <span class="live">— active Fiat pour créer librement</span>`, 3500); return; }
     command(text, { fromVoice: true });
   }, (on, err) => { $('#btnVoice').classList.toggle('on', on); setStatus(); if (err) toast(err, 5000); if (on) bubble('Je t’écoute… <span class="live">ex. « crée une pièce de 6 sur 4 »</span>', 4000); });
   if (!voice.supported) { toast('La reconnaissance vocale n’est pas disponible ici. Sur iPhone, active Siri et utilise Safari.', 5000); return; }
@@ -648,7 +648,7 @@ function sanitize(d) {
   const num = (v, def, min = -1e5, max = 1e5) => (typeof v === 'number' && isFinite(v) ? Math.min(max, Math.max(min, v)) : def);
   const arr3 = (a, def) => Array.isArray(a) && a.length === 3 ? a.map((v, i) => num(v, def[i])) : def;
   const matOk = v => typeof v === 'string' && v.length < 40 && /^[#a-z0-9:.\-]+$/i.test(v);
-  const clean = v => { // paramètres : nombres, chaînes courtes, ou description d'objet Verbe (structure simple)
+  const clean = v => { // paramètres : nombres, chaînes courtes, ou description d'objet Fiat (structure simple)
     if (typeof v === 'number') return num(v, 0); if (typeof v === 'string') return v.slice(0, 200); if (typeof v === 'boolean') return v;
     if (Array.isArray(v)) return v.slice(0, 600).map(clean); if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v).slice(0, 40)) if (/^[a-z_0-9]+$/i.test(k)) o[k] = clean(v[k]); return o; } return null;
   };
@@ -665,7 +665,7 @@ function sanitize(d) {
 /* ---------- page vierge : petit repère au centre ---------- */
 function showHint(on) {
   const h = $('#hint'); h.hidden = !on || engine.content.children.length > 0;
-  if (!h.hidden) h.innerHTML = `<b>Page vierge</b>Touche ${svg('plus').replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2"')} Créer, demande à Verbe,<br>ou ouvre un projet dans Calques → Mon atelier.`;
+  if (!h.hidden) h.innerHTML = `<b>Page vierge</b>Touche ${svg('plus').replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2"')} Créer, demande à Fiat,<br>ou ouvre un projet dans Calques → Mon atelier.`;
 }
 engine.addEventListener('change', () => { if (!$('#hint').hidden && engine.content.children.length) $('#hint').hidden = true; });
 
@@ -683,7 +683,7 @@ engine.addEventListener('frame', () => {
   label.hidden = false; label.style.transform = `translate(${x}px, ${Math.max(70, y)}px) translate(-50%, -100%)`;
 });
 
-/* ---------- Verbe : commande libre ---------- */
+/* ---------- Fiat : commande libre ---------- */
 let cmdForSel = false, cmdAbort = null;
 function openCmd(forSel) {
   cmdForSel = !!forSel && !!engine.selected;
@@ -698,7 +698,7 @@ $('#cmd').onsubmit = e => { e.preventDefault(); const t = $('#cmdInput').value.t
 
 // une phrase : d'abord les commandes connues (instantané), sinon le cerveau
 async function command(text, { forceAI = false, fromVoice = false } = {}) {
-  // phrases courtes et connues → exécution immédiate ; descriptions libres → Verbe
+  // phrases courtes et connues → exécution immédiate ; descriptions libres → Fiat
   const wantsAI = forceAI || (brain.key && text.trim().split(/\s+/).length > 5);
   if (!wantsAI) {
     const acts = parseCommand(text);
@@ -706,7 +706,7 @@ async function command(text, { forceAI = false, fromVoice = false } = {}) {
   }
   if (!brain.key) { brainSetup(text); return; }
   const target = engine.selected?.userData.type === 'ia' && (forceAI || cmdForSel) ? engine.selected : null;
-  $('#cmd').classList.add('busy'); bubble(`<span class="live">Verbe construit : ${esc(text)}…</span>`, 0);
+  $('#cmd').classList.add('busy'); bubble(`<span class="live">Fiat construit : ${esc(text)}…</span>`, 0);
   cmdAbort = new AbortController();
   try {
     const lib = CATALOG.filter(c => c.cat !== 'Créations').map(c => c.id).join(', ');
@@ -725,25 +725,25 @@ async function command(text, { forceAI = false, fromVoice = false } = {}) {
   } catch (e) {
     if (e.name === 'AbortError') { bubble('Annulé', 1500); }
     else if (e.code === 'nokey') brainSetup(text);
-    else { console.error(e); bubble(`<span class="live">${esc(e.message || 'Verbe n’a pas pu répondre')}</span>`, 5000); }
+    else { console.error(e); bubble(`<span class="live">${esc(e.message || 'Fiat n’a pas pu répondre')}</span>`, 5000); }
   } finally { $('#cmd').classList.remove('busy'); cmdAbort = null; }
 }
 
 function brainSetup(pending) {
-  openModal(`<h2>Cerveau Verbe</h2>
+  openModal(`<h2>Cerveau Fiat</h2>
     <p>Pour créer <b>n’importe quoi</b> à partir d’une phrase, ALMYGO s’appuie sur Claude, l’IA d’Anthropic, avec ta propre clé API. Tu paies directement à l’usage, en général quelques centimes par création.</p>
     <p>1. Crée une clé sur <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (Réglages → API Keys).<br>2. Colle-la ici. Elle reste uniquement sur cet appareil.</p>
     <input class="field" id="kKey" type="password" placeholder="sk-ant-…" autocomplete="off" style="font-size:15px;letter-spacing:0;text-transform:none;text-align:left" value="${esc(brain.key)}">
     <div class="optrow"><span>Modèle</span><div class="seg" id="kModel">${MODELS.map(([id, n]) => `<button data-v="${id}" class="${brain.model === id ? 'on' : ''}">${n}</button>`).join('')}</div></div>
     <label class="check"><input type="checkbox" id="kOk"> <span>J’accepte que mes demandes et la description de mes créations soient envoyées à Anthropic pour être traitées (voir la <a class="link" href="#" id="kPriv">confidentialité</a>).</span></label>
-    <div class="row"><button class="btn" id="kSave" disabled>Activer Verbe</button>${brain.key ? '<button class="btn ghost" id="kDel">Retirer la clé</button>' : ''}<button class="btn ghost" data-close>Plus tard</button></div>`, root => {
+    <div class="row"><button class="btn" id="kSave" disabled>Activer Fiat</button>${brain.key ? '<button class="btn ghost" id="kDel">Retirer la clé</button>' : ''}<button class="btn ghost" data-close>Plus tard</button></div>`, root => {
     const ok = root.querySelector('#kOk'), save = root.querySelector('#kSave'), key = root.querySelector('#kKey');
     const upd = () => save.disabled = !(ok.checked && key.value.trim().length > 20);
     ok.onchange = upd; key.oninput = upd;
     root.querySelectorAll('#kModel button').forEach(b => b.onclick = () => { root.querySelectorAll('#kModel button').forEach(x => x.classList.toggle('on', x === b)); brain.model = b.dataset.v; });
     root.querySelector('#kPriv').onclick = e => { e.preventDefault(); showLegal('confidentialite'); };
     root.querySelector('#kDel')?.addEventListener('click', () => { brain.key = ''; closeModal(); toast('Clé retirée de cet appareil'); });
-    save.onclick = () => { brain.key = key.value; closeModal(); toast('Verbe est prêt'); if (pending) command(pending, { forceAI: true }); };
+    save.onclick = () => { brain.key = key.value; closeModal(); toast('Fiat est prêt'); if (pending) command(pending, { forceAI: true }); };
   });
 }
 
@@ -764,7 +764,7 @@ function playTick(f = 660) {
 window.atelierTick = playTick;
 window.atelierSave = () => saveProjectPrompt();
 window.atelierLayers = () => $('#inspector').classList.contains('open') ? closeInspector() : openInspector('calques');
-window.atelierVerbe = () => openCmd(true);
+window.atelierFiat = () => openCmd(true);
 
 /* ---------- modelage ---------- */
 import('./sculpt.js').then(({ TOOLS }) => {
@@ -970,7 +970,7 @@ function openMenu() {
     <div class="optrow"><span>Sons de confirmation</span><div class="seg" id="mSound"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="optrow"><span>Grille au sol</span><div class="seg" id="mGrid"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="list" style="margin-top:14px">
-      <button class="item" data-m="jarvis">${svg('sparkle')}<div><div class="t">Cerveau Verbe</div><div class="s">${brain.key ? 'Actif. Changer de clé ou de modèle.' : 'Créer n’importe quoi à partir d’une phrase.'}</div></div></button>
+      <button class="item" data-m="jarvis">${svg('sparkle')}<div><div class="t">Cerveau Fiat</div><div class="s">${brain.key ? 'Actif. Changer de clé ou de modèle.' : 'Créer n’importe quoi à partir d’une phrase.'}</div></div></button>
       <button class="item" data-m="walk">${svg('walk')}<div><div class="t">Visiter</div><div class="s">Te promener dans ta création à hauteur d’yeux.</div></div></button>
       <button class="item" data-m="frame">${svg('frame')}<div><div class="t">Vue d’ensemble</div></div></button>
       <button class="item" data-m="save">${svg('save')}<div><div class="t">Enregistrer dans mon atelier</div><div class="s">Sur cet appareil, pour reprendre plus tard.</div></div></button>
