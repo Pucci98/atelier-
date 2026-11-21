@@ -2,11 +2,12 @@
 import * as THREE from 'three';
 import { Engine } from './engine.js';
 import { CATALOG, CATEGORIES, getItem } from './library.js';
-import { MATERIALS, PAINTS, PALETTES, renderThumbs, swatchDataURL, getMaterialDef, material } from './materials.js';
+import { MATERIALS, PAINTS, PALETTES, renderThumbs, swatchDataURL, getMaterialDef, material, readyOf } from './materials.js';
 import { setupInput, setupJoystick } from './input.js';
 import { parseCommand, Voice } from './voice.js';
-import { exportGLB, exportUSDZ, exportProject, screenshot, share, readProjectFile, autosave, restore } from './io.js';
+import { exportGLB, exportUSDZ, exportProject, exportCode, exportModule, screenshot, share, readProjectFile, autosave, restore } from './io.js';
 import { hostDisplay, connectTo } from './link.js';
+import { brain, askBrain, MODELS } from './ai.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -41,11 +42,14 @@ const I = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>',
   bulb: '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.9-.7-1.3-.7-2.2 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7.5" r="1.2"/>',
+  send: '<path d="M4 12h15M13 6l6 6-6 6"/>',
+  code: '<path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>',
   sculpt: '<path d="M12 3c4 0 6 3 6 6 0 4-3 5-3 8v2H9v-2c0-3-3-4-3-8 0-3 2-6 6-6z"/><path d="M9 21h6"/><path d="M10 9c1 1 3 1 4 0"/>',
   camera: '<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>',
 };
 const svg = k => `<svg viewBox="0 0 24 24">${I[k] || ''}</svg>`;
-for (const [id, k] of [['btnUndo', 'undo'], ['btnRedo', 'redo'], ['btnHands', 'hand'], ['btnVoice', 'mic'], ['btnLink', 'screen'], ['btnShare', 'share'], ['btnMenu', 'menu'], ['selClose', 'close']]) $('#' + id).innerHTML = svg(k);
+for (const [id, k] of [['btnUndo', 'undo'], ['btnRedo', 'redo'], ['btnHands', 'hand'], ['btnVoice', 'mic'], ['btnLink', 'screen'], ['btnShare', 'share'], ['btnMenu', 'menu'], ['selClose', 'close'], ['sheetClose', 'close'], ['cmdGo', 'send'], ['cmdClose', 'close']]) $('#' + id).innerHTML = svg(k);
 $$('[data-i]').forEach(el => el.innerHTML = svg(el.dataset.i));
 
 /* ---------- moteur ---------- */
@@ -92,6 +96,7 @@ function legalHTML(section) {
       <p><b>Micro</b> : les commandes vocales utilisent la reconnaissance vocale de ton navigateur. Sur iPhone, Apple peut traiter l’audio sur ses serveurs selon ses propres règles (dictée Siri).</p>
       <p><b>Tes créations</b> : elles sont sauvegardées uniquement dans ton navigateur (stockage local). Elles ne quittent ton appareil que si tu les exportes ou les envoies toi-même.</p>
       <p><b>Écran lié</b> : pour relier deux écrans, un serveur de mise en relation (PeerJS) reçoit un identifiant de connexion et l’adresse IP des appareils, puis la scène circule directement entre tes appareils.</p>
+      <p><b>Jarvis (facultatif)</b> : si tu actives le cerveau Jarvis avec ta clé API, tes demandes écrites ou dictées et la description de la création à modifier sont envoyées directement de ton appareil à Anthropic (Claude) pour être traitées, selon les conditions d’Anthropic. Ta clé reste stockée uniquement sur ton appareil.</p>
       <p><b>Ressources techniques</b> : les polices (Google Fonts) et le modèle de suivi des mains (Google, storage.googleapis.com) sont téléchargés depuis leurs serveurs, qui voient donc ton adresse IP.</p>
       <p><b>Aucun cookie, aucune mesure d’audience, aucune publicité.</b></p>
       <p><b>Base légale</b> : ton consentement (caméra, micro), que tu peux retirer à tout moment dans Menu → Confidentialité. <b>Tes droits</b> (accès, rectification, effacement, opposition, retrait du consentement) : écris à annoh63@gmail.com. Tu peux aussi saisir la CNIL (cnil.fr).</p></div>`,
@@ -123,16 +128,35 @@ async function startCamera() {
   if (stream) return stream;
   if (!navigator.mediaDevices?.getUserMedia) throw new Error('Caméra indisponible sur ce navigateur.');
   stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 960 }, height: { ideal: 720 } }, audio: false });
+  // si la caméra s'arrête toute seule, on la relance
+  stream.getVideoTracks().forEach(t => t.addEventListener('ended', () => { if (hands?.active || engine.backdrop === 'camera') { stream = null; setTimeout(() => startCamera().catch(() => { }), 400); } }));
   for (const v of [$('#cam'), $('#pipVideo')]) { v.srcObject = stream; v.classList.toggle('mirror', facing === 'user'); try { await v.play(); } catch { } }
   return stream;
 }
 function stopCamera() { stream?.getTracks().forEach(t => t.stop()); stream = null; $('#cam').srcObject = null; $('#pipVideo').srcObject = null; }
 function updatePip() { $('#camPip').hidden = !(hands?.active && engine.backdrop !== 'camera'); }
 
+/* ---------- écran toujours allumé pendant les mains / l'écran lié (sinon l'iPhone se met en veille et tout se coupe) ---------- */
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && 'wakeLock' in navigator) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); }
+    else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { }
+}
+const needAwake = () => !!(hands?.active || link);
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible') return;
+  if (needAwake()) keepAwake(true);
+  // au retour dans l'appli, la caméra est relancée si iOS l'a coupée
+  if (hands?.active && (!stream || stream.getVideoTracks().every(t => t.readyState === 'ended'))) { stream = null; try { await startCamera(); } catch { } }
+  $('#cam').play?.().catch(() => { });
+});
+
 /* ---------- mains ---------- */
 let hands = null;
 async function toggleHands() {
-  if (hands?.active) { hands.stop(); $('#btnHands').classList.remove('on'); if (engine.backdrop !== 'camera') stopCamera(); updatePip(); setStatus(); return; }
+  if (hands?.active) { hands.stop(); $('#btnHands').classList.remove('on'); if (!needAwake()) keepAwake(false); if (engine.backdrop !== 'camera') stopCamera(); updatePip(); setStatus(); return; }
   if (!hasConsent() && !(await askConsent())) return;
   try {
     toast('Activation de la caméra…');
@@ -140,8 +164,8 @@ async function toggleHands() {
     if (!hands) { const { Hands } = await import('./hands.js'); hands = new Hands(engine, $('#cam'), $('#handsOverlay'), ui); }
     toast('Chargement du suivi des mains…', 6000);
     await hands.start(facing === 'user');
-    $('#btnHands').classList.add('on'); updatePip(); setStatus();
-    toast('Mains actives : pointe avec l’index, reste pointé pour sélectionner', 3200);
+    $('#btnHands').classList.add('on'); updatePip(); setStatus(); keepAwake(true);
+    toast('Mains actives : vise avec l’index, pince pouce + index pour toucher', 3200);
     if (!sessionStorageGet('handsHelp')) { sessionStorageSet('handsHelp', 1); setTimeout(showHandsHelp, 600); }
   } catch (e) {
     console.error(e); toast(e.name === 'NotAllowedError' ? 'Caméra refusée : autorise-la dans Réglages → Safari → Caméra.' : 'Impossible de lancer le suivi des mains : ' + (e.message || e), 5000);
@@ -152,15 +176,14 @@ function sessionStorageGet(k) { try { return sessionStorage.getItem('atelier:' +
 function sessionStorageSet(k, v) { try { sessionStorage.setItem('atelier:' + k, v); } catch { } }
 function showHandsHelp() {
   openModal(`<h2>Créer avec les mains</h2>
-    <p>Pose l’iPhone debout, à environ 50 cm, caméra face à toi. Tes deux mains sont suivies séparément : tu peux viser d’une main et tourner la vue de l’autre. Seuls le pouce, l’index et le majeur comptent, les autres doigts sont ignorés.</p>
+    <p>Pose l’iPhone debout, à environ 50 cm, caméra face à toi. <b>Seuls le pouce et l’index comptent</b> : les autres doigts peuvent faire ce qu’ils veulent. Tes deux mains sont suivies séparément.</p>
     <ul>
-      <li><b>Pointer</b> : index tendu, majeur replié. Le curseur suit ton index, ce que tu vises s’éclaire.</li>
-      <li><b>Sélectionner</b> : reste pointé sur la cible, l’anneau se remplit et ça sélectionne. Pour aller plus vite, pousse le doigt vers l’écran, comme pour appuyer. Ça marche aussi sur les boutons.</li>
-      <li><b>Zoomer</b> : comme sur un téléphone, écarte ou rapproche pouce et index. Objet sélectionné : il grandit ou rétrécit.</li>
-      <li><b>Tourner la vue</b> : main ouverte, balaie à gauche, à droite, en haut ou en bas.</li>
-      <li><b>Pivoter l’objet</b> : main ouverte, tourne le poignet comme un bouton de volume.</li>
-      <li><b>Déplacer</b> : ferme le poing, bouge, rouvre la main pour lâcher.</li>
-      <li><b>Modeler</b> : en mode Modeler, pousse le doigt dans la matière et garde-le enfoncé en bougeant.</li>
+      <li><b>Viser</b> : le curseur suit le bout de ton index, l’objet visé s’éclaire avec son nom.</li>
+      <li><b>Toucher</b> : pince pouce + index, puis relâche. Ça sélectionne l’objet, ça clique le bouton, et dans le vide ça désélectionne.</li>
+      <li><b>Glisser</b> : pince, bouge, relâche. Sur un objet, tu le déplaces. Dans le vide, tu tournes la vue.</li>
+      <li><b>Zoomer</b> : sans pincer, écarte ou rapproche pouce et index comme sur un téléphone. Si un objet est sélectionné, c’est lui qui change de taille.</li>
+      <li><b>Deux mains</b> : pince des deux mains et écarte-les pour agrandir, tourne-les pour faire pivoter.</li>
+      <li><b>Modeler</b> : en mode Modeler, pince sur la matière et glisse.</li>
     </ul>
     <div class="row"><button class="btn" data-close>C’est parti</button></div>`);
 }
@@ -173,10 +196,8 @@ async function toggleVoice() {
   if (!hasConsent() && !(await askConsent())) return;
   if (!voice) voice = new Voice((text, final) => {
     if (!final) { bubble(`<span class="live">${esc(text)}</span>`, 0); return; }
-    const acts = parseCommand(text);
-    if (!acts.length) { bubble(`« ${esc(text)} » <span class="live">— je n’ai pas compris</span>`, 3500); return; }
-    const done = runActions(acts);
-    bubble(`<span class="ok">✓</span> ${esc(done || text)}`, 2600);
+    if (!parseCommand(text).length && !brain.key) { bubble(`« ${esc(text)} » <span class="live">— active Jarvis pour créer librement</span>`, 3500); return; }
+    command(text, { fromVoice: true });
   }, (on, err) => { $('#btnVoice').classList.toggle('on', on); setStatus(); if (err) toast(err, 5000); if (on) bubble('Je t’écoute… <span class="live">ex. « crée une pièce de 6 sur 4 »</span>', 4000); });
   if (!voice.supported) { toast('La reconnaissance vocale n’est pas disponible ici. Sur iPhone, active Siri et utilise Safari.', 5000); return; }
   voice.start();
@@ -246,6 +267,7 @@ async function renderItemThumbs(ids) {
   for (const id of ids) {
     await new Promise(r => setTimeout(r, 0));
     const g = engine.build(id); g.userData.mats = {}; engine.applyMaterials(g);
+    const waits = []; g.traverse(o => { const r = readyOf(o.material); if (r) waits.push(r); }); await Promise.all(waits);
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; if (o.material?.userData?.fadeable) { o.material.opacity = 1; o.material.transparent = false; } } if (o.isLight && o.userData.lamp) o.intensity *= 0.4; });
     sc.add(g);
     const b = new THREE.Box3().setFromObject(g); const s = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
@@ -272,7 +294,7 @@ const AMB = [['jour', 'Jour'], ['doree', 'Heure dorée'], ['soir', 'Soir'], ['st
 function renderTabs() {
   $('#tabs').innerHTML = TABS.map(t => `<button class="tab ${t === tab ? 'on' : ''}" data-tab="${t}">${t}</button>`).join('');
   $('#tabs .tab.on')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-  $$('#tabs .tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; renderTabs(); renderTray(); sheetUser = false; setSheet(false); });
+  $$('#tabs .tab').forEach(b => b.onclick = () => { tab = b.dataset.tab; renderTabs(); renderTray(); });
 }
 function card(id, label, img, extra = '') { return `<button class="card ${extra}" data-id="${id}">${img ? `<img src="${img}" alt="">` : `<div class="ph">${svg('cube')}</div>`}<span class="lbl">${label}</span></button>`; }
 
@@ -304,7 +326,7 @@ async function renderTray() {
     tray.innerHTML = html;
     tray.querySelector('[data-act=suggest]').onclick = suggest;
     tray.querySelectorAll('[data-pal]').forEach(c => c.onclick = () => { engine.applyPalette(c.dataset.pal); toast('Style ' + PALETTES.find(p => p.id === c.dataset.pal).name + ' appliqué'); renderTray(); });
-    tray.querySelectorAll('[data-tpl]').forEach(c => c.onclick = () => loadTemplate(c.dataset.tpl));
+    tray.querySelectorAll('[data-tpl]').forEach(c => c.onclick = () => { setSheet(true); loadTemplate(c.dataset.tpl); });
     if (!Object.keys(matThumbs).length) loadMatThumbs();
     return;
   }
@@ -321,10 +343,11 @@ async function renderTray() {
   html += items.map(c => card(c.id, c.name, itemThumbs[c.id])).join('');
   tray.innerHTML = html;
   tray.querySelectorAll('[data-amb]').forEach(c => c.onclick = () => { engine.setAmbiance(c.dataset.amb); renderTray(); });
-  tray.querySelectorAll('[data-tpl]').forEach(c => c.onclick = () => loadTemplate(c.dataset.tpl));
+  tray.querySelectorAll('[data-tpl]').forEach(c => c.onclick = () => { setSheet(true); loadTemplate(c.dataset.tpl); });
   tray.querySelectorAll('.card[data-id]').forEach(c => c.onclick = () => {
     const def = getItem(c.dataset.id);
     const g = engine.add(c.dataset.id);
+    setSheet(true);
     if (def.garment && !(engine.selected && engine.selected !== g)) toast('Astuce : sélectionne d’abord un personnage pour l’habiller');
     if (def.id === 'piece' || def.big) engine.frameAll();
     else if (def.sculpt) engine.focus(g);
@@ -356,8 +379,10 @@ function pickMaterial(id) {
   if (id.startsWith('#')) { if (!s) toast('Sélectionne un élément pour le peindre'); return; }
   const d = getMaterialDef(id);
   pendingMat = id;
-  $('#mdSwatch').style.backgroundImage = d.glass ? `url(${matThumbs[id]})` : `url(${swatchDataURL(id)})`;
-  $('#mdSwatch').style.backgroundSize = d.glass ? 'cover' : '160%';
+  const sw = d.glass ? null : swatchDataURL(id);
+  $('#mdSwatch').style.backgroundImage = sw ? `url(${sw})` : `url(${matThumbs[id] || ''})`;
+  $('#mdSwatch').style.backgroundSize = sw ? '160%' : 'cover';
+  if (!sw && !d.glass) readyOf(material(id))?.then(() => { if (pendingMat === id) { const u = swatchDataURL(id); if (u) { $('#mdSwatch').style.backgroundImage = `url(${u})`; $('#mdSwatch').style.backgroundSize = '160%'; } } });
   $('#mdCat').textContent = d.cat + (s ? ' · appliqué sur ' + ROLE_LABEL[engine.selectedRole].toLowerCase() : '');
   $('#mdName').textContent = d.name; $('#mdDesc').textContent = d.desc;
   $('#mdApply').hidden = !!s; $('#mdApply').textContent = 'Appliquer';
@@ -415,33 +440,48 @@ function throttleRebuild(k, v) {
   rbT = requestAnimationFrame(() => { const s = engine.selected; if (s) { engine.rebuild(s, rbPending); ui.showDims(); } rbPending = {}; rbT = null; });
 }
 
-let sheetUser = false; // la bibliothèque a été repliée par l'utilisateur
-function setSheet(collapsed) { $('#sheet').classList.toggle('collapsed', collapsed); document.body.classList.toggle('sheet-collapsed', collapsed); updateInset(); }
+function setSheet(collapsed) {
+  $('#sheet').classList.toggle('collapsed', collapsed); document.body.classList.toggle('sheet-open', !collapsed);
+  $$('.dk').forEach(d => d.classList.toggle('on', !collapsed && d.dataset.dock === dockTab()));
+  updateInset();
+}
+const dockTab = () => ({ Matières: 'matieres', Styles: 'styles', Lumières: 'lumiere' })[tab] || 'create';
+function openLibrary(t) {
+  const sameOpen = !$('#sheet').classList.contains('collapsed') && (!t || t === tab || (t === 'create' && !['Matières', 'Styles', 'Lumières'].includes(tab)));
+  if (sameOpen) { setSheet(true); return; }
+  if (t && t !== 'create') tab = t; else if (['Matières', 'Styles', 'Lumières'].includes(tab)) tab = 'Modeler';
+  renderTabs(); renderTray(); setSheet(false);
+}
+// la scène se recentre dans la zone réellement visible (entre les panneaux du haut et du bas)
 function updateInset() {
   requestAnimationFrame(() => {
-    const H = window.innerHeight; let top = H;
-    const sh = $('#sheet'); if (!sh.hidden && !document.body.classList.contains('walking') && !isDisplay) top = Math.min(top, sh.getBoundingClientRect().top);
-    const sp = $('#selPanel'); if (!sp.hidden && window.innerWidth < 900) top = Math.min(top, sp.getBoundingClientRect().top);
-    const bar = isDisplay || document.body.classList.contains('walking') ? 0 : 60;
-    engine.setInset(Math.max(0, (H - top) - bar) / 2);
+    const H = window.innerHeight;
+    if (isDisplay || document.body.classList.contains('walking')) { engine.setInset(0); return; }
+    let top = 56, bottom = H;
+    const sp = $('#selPanel'); if (!sp.hidden && window.innerWidth < 900) top = Math.max(top, sp.getBoundingClientRect().bottom);
+    const sh = $('#sheet'); if (!sh.classList.contains('collapsed')) bottom = Math.min(bottom, sh.getBoundingClientRect().top);
+    const cmd = $('#cmd'); if (!cmd.hidden) bottom = Math.min(bottom, cmd.getBoundingClientRect().top);
+    engine.setInset(H / 2 - (top + bottom) / 2);
   });
 }
 new ResizeObserver(updateInset).observe($('#selPanel'));
 new ResizeObserver(updateInset).observe($('#sheet'));
 window.addEventListener('resize', updateInset);
 $('#sheet').addEventListener('transitionend', updateInset);
+$('#sheetClose').onclick = () => setSheet(true);
 let lastSel = null;
 engine.addEventListener('selection', e => {
   const g = e.detail.object;
-  if (window.innerWidth < 900 && !isDisplay) { if (g && tab !== 'Matières') setSheet(true); else if (!g && !sheetUser) setSheet(false); }
   $('#selPanel').hidden = !g || isDisplay;
+  document.body.classList.toggle('has-sel', !!g);
+  updateInset();
   $('#params').hidden = true; $('[data-act=params]').classList.remove('on');
   const canSc = !!g && engine.sculptor.canSculpt(g);
   if (engine.sculptor.active && (!canSc || g !== lastSel)) setSculpt(false);
   lastSel = g;
   $('[data-act=sculpt]').hidden = !canSc; $('[data-act=focus]').hidden = canSc;
   if (!g) { $('#matDetail').hidden = true; if (tab === 'Matières') renderTray(); return; }
-  $('#selName').textContent = getItem(g.userData.type)?.name || 'Élément';
+  $('#selName').textContent = nameOf(g);
   ui.showDims(); renderParts();
   if (tab === 'Matières') renderTray();
 });
@@ -450,7 +490,8 @@ $$('.sel-tools button').forEach(b => b.onclick = () => {
   const s = engine.selected; if (!s) return;
   switch (b.dataset.act) {
     case 'sculpt': setSculpt(true); break;
-    case 'material': tab = 'Matières'; renderTabs(); renderTray(); setSheet(false); break;
+    case 'material': openLibrary('Matières'); break;
+    case 'ai': openCmd(true); break;
     case 'params': { const p = $('#params'); p.hidden = !p.hidden; b.classList.toggle('on', !p.hidden); if (!p.hidden) renderParams(); break; }
     case 'rotate': s.rotation.y -= Math.PI / 4; engine.commit(); ui.showDims(); break;
     case 'duplicate': engine.duplicate(s); break;
@@ -458,6 +499,114 @@ $$('.sel-tools button').forEach(b => b.onclick = () => {
     case 'delete': engine.remove(s); break;
   }
 });
+
+const nameOf = g => g?.userData.params?.spec?.nom || getItem(g?.userData.type)?.name || 'Élément';
+
+/* ---------- dock ---------- */
+$$('.dk').forEach(b => b.onclick = () => {
+  const d = b.dataset.dock;
+  if (d === 'create') openLibrary('create');
+  else if (d === 'matieres') openLibrary('Matières');
+  else if (d === 'styles') openLibrary('Styles');
+  else if (d === 'lumiere') openLibrary('Lumières');
+  else if (d === 'jarvis') openCmd(false);
+  else if (d === 'frame') engine.frameAll();
+  else if (d === 'walk') startWalk();
+});
+
+/* ---------- repère sur l'objet visé / sélectionné ---------- */
+const label = $('#objLabel'); let labelBox = null, labelFor = null, labelN = 0;
+engine.addEventListener('frame', () => {
+  const g = engine.hovered || engine.selected;
+  if (!g || engine.walk || isDisplay || !g.parent) { label.hidden = true; labelFor = null; return; }
+  if (g !== labelFor || ++labelN % 12 === 0) { labelBox = new THREE.Box3().setFromObject(g); labelFor = g; label.querySelector('b').textContent = nameOf(g); label.querySelector('span').textContent = g === engine.selected ? '' : 'pointer pour choisir'; }
+  const c = labelBox.getCenter(new THREE.Vector3()); c.y = labelBox.max.y;
+  c.project(engine.camera);
+  if (c.z > 1) { label.hidden = true; return; }
+  const r = engine.canvas.getBoundingClientRect();
+  const x = (c.x + 1) / 2 * r.width, y = (1 - c.y) / 2 * r.height - 10;
+  label.hidden = false; label.style.transform = `translate(${x}px, ${Math.max(70, y)}px) translate(-50%, -100%)`;
+});
+
+/* ---------- Jarvis : commande libre ---------- */
+let cmdForSel = false, cmdAbort = null;
+function openCmd(forSel) {
+  cmdForSel = !!forSel && !!engine.selected;
+  $('#cmd').hidden = false; setSheet(true);
+  $('#cmdInput').placeholder = cmdForSel ? `Que changer sur « ${nameOf(engine.selected)} » ?` : 'Que veux-tu créer ? ex. « une chaise design en bois courbé »';
+  setTimeout(() => $('#cmdInput').focus(), 50);
+  $('.dk[data-dock=jarvis]').classList.add('on'); updateInset();
+}
+function closeCmd() { $('#cmd').hidden = true; $('#cmdInput').blur(); $('.dk[data-dock=jarvis]').classList.remove('on'); cmdAbort?.abort(); updateInset(); }
+$('#cmdClose').onclick = closeCmd;
+$('#cmd').onsubmit = e => { e.preventDefault(); const t = $('#cmdInput').value.trim(); if (!t) return; $('#cmdInput').value = ''; command(t, { forceAI: cmdForSel }); };
+
+// une phrase : d'abord les commandes connues (instantané), sinon le cerveau
+async function command(text, { forceAI = false, fromVoice = false } = {}) {
+  // phrases courtes et connues → exécution immédiate ; descriptions libres → Jarvis
+  const wantsAI = forceAI || (brain.key && text.trim().split(/\s+/).length > 5);
+  if (!wantsAI) {
+    const acts = parseCommand(text);
+    if (acts.length) { const done = runActions(acts); bubble(`<span class="ok">✓</span> ${esc(done || text)}`, 2600); return; }
+  }
+  if (!brain.key) { brainSetup(text); return; }
+  const target = engine.selected?.userData.type === 'ia' && (forceAI || cmdForSel) ? engine.selected : null;
+  $('#cmd').classList.add('busy'); bubble(`<span class="live">Jarvis construit : ${esc(text)}…</span>`, 0);
+  cmdAbort = new AbortController();
+  try {
+    const lib = CATALOG.filter(c => c.cat !== 'Créations').map(c => c.id).join(', ');
+    const spec = await askBrain({ prompt: text, current: target ? target.userData.params.spec : null, library: lib, signal: cmdAbort.signal });
+    let g;
+    if (target) g = engine.rebuild(target, { spec });
+    else if (spec.parties.length) g = engine.add('ia', { params: { spec }, silent: true });
+    for (const el of spec.elements) {
+      if (!getItem(el.type) || el.type === 'ia') continue;
+      engine.add(el.type, { params: el.params, pos: el.pos, rotY: el.rotY != null ? el.rotY * Math.PI / 180 : undefined, silent: true });
+    }
+    if (target) engine.commit(); else { engine.commit(); if (g) engine.setSelection(g); }
+    if (g && !target) engine.focus(g, 2.6); else if (!g) engine.frameAll();
+    bubble(`<span class="ok">✓</span> ${esc(spec.message || spec.nom || 'C’est fait')}`, 4000);
+    playTick(880);
+  } catch (e) {
+    if (e.name === 'AbortError') { bubble('Annulé', 1500); }
+    else if (e.code === 'nokey') brainSetup(text);
+    else { console.error(e); bubble(`<span class="live">${esc(e.message || 'Jarvis n’a pas pu répondre')}</span>`, 5000); }
+  } finally { $('#cmd').classList.remove('busy'); cmdAbort = null; }
+}
+
+function brainSetup(pending) {
+  openModal(`<h2>Cerveau Jarvis</h2>
+    <p>Pour créer <b>n’importe quoi</b> à partir d’une phrase, Atelier s’appuie sur Claude, l’IA d’Anthropic, avec ta propre clé API. Tu paies directement à l’usage, en général quelques centimes par création.</p>
+    <p>1. Crée une clé sur <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (Réglages → API Keys).<br>2. Colle-la ici. Elle reste uniquement sur cet appareil.</p>
+    <input class="field" id="kKey" type="password" placeholder="sk-ant-…" autocomplete="off" style="font-size:15px;letter-spacing:0;text-transform:none;text-align:left" value="${esc(brain.key)}">
+    <div class="optrow"><span>Modèle</span><div class="seg" id="kModel">${MODELS.map(([id, n]) => `<button data-v="${id}" class="${brain.model === id ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+    <label class="check"><input type="checkbox" id="kOk"> <span>J’accepte que mes demandes et la description de mes créations soient envoyées à Anthropic pour être traitées (voir la <a class="link" href="#" id="kPriv">confidentialité</a>).</span></label>
+    <div class="row"><button class="btn" id="kSave" disabled>Activer Jarvis</button>${brain.key ? '<button class="btn ghost" id="kDel">Retirer la clé</button>' : ''}<button class="btn ghost" data-close>Plus tard</button></div>`, root => {
+    const ok = root.querySelector('#kOk'), save = root.querySelector('#kSave'), key = root.querySelector('#kKey');
+    const upd = () => save.disabled = !(ok.checked && key.value.trim().length > 20);
+    ok.onchange = upd; key.oninput = upd;
+    root.querySelectorAll('#kModel button').forEach(b => b.onclick = () => { root.querySelectorAll('#kModel button').forEach(x => x.classList.toggle('on', x === b)); brain.model = b.dataset.v; });
+    root.querySelector('#kPriv').onclick = e => { e.preventDefault(); showLegal('confidentialite'); };
+    root.querySelector('#kDel')?.addEventListener('click', () => { brain.key = ''; closeModal(); toast('Clé retirée de cet appareil'); });
+    save.onclick = () => { brain.key = key.value; closeModal(); toast('Jarvis est prêt'); if (pending) command(pending, { forceAI: true }); };
+  });
+}
+
+/* ---------- petit son de confirmation (gestes, créations) ---------- */
+let actx = null, soundOn = true;
+try { soundOn = localStorage.getItem('atelier:son') !== '0'; } catch { }
+function playTick(f = 660) {
+  if (!soundOn) return;
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'sine'; o.frequency.value = f; g.gain.value = 0.0001;
+    o.connect(g); g.connect(actx.destination);
+    const t = actx.currentTime; g.gain.exponentialRampToValueAtTime(0.06, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    o.start(t); o.stop(t + 0.14);
+  } catch { }
+}
+window.atelierTick = playTick;
 
 /* ---------- modelage ---------- */
 import('./sculpt.js').then(({ TOOLS }) => {
@@ -498,7 +647,7 @@ function setSculpt(on) {
 }
 
 /* ---------- feuille ---------- */
-$('#sheetHandle').onclick = () => { const c = !$('#sheet').classList.contains('collapsed'); sheetUser = c; setSheet(c); };
+
 
 /* ---------- modèles (pièces composées) ---------- */
 const P2 = Math.PI / 2;
@@ -589,6 +738,8 @@ function openExport() {
     <div class="list">
       <button class="item" data-x="usdz">${svg('ar')}<div><div class="t">Réalité augmentée (USDZ)</div><div class="s">S’ouvre d’un tap sur iPhone et iPad, pour poser la création dans la pièce.</div></div></button>
       <button class="item" data-x="glb">${svg('cube')}<div><div class="t">Modèle 3D (GLB)</div><div class="s">Format universel : Blender, sites 3D, logiciels pros.</div></div></button>
+      <button class="item" data-x="code">${svg('code')}<div><div class="t">Code — page web (HTML)</div><div class="s">Un fichier .html qui affiche ta création en 3D : à ouvrir, modifier ou mettre sur un site.</div></div></button>
+      <button class="item" data-x="module">${svg('code')}<div><div class="t">Code — description JavaScript</div><div class="s">La scène sous forme de code, pour un développeur ou une autre appli.</div></div></button>
       <button class="item" data-x="project">${svg('file')}<div><div class="t">Projet Atelier</div><div class="s">Pour rouvrir et continuer dans Atelier, chez toi ou chez quelqu’un d’autre.</div></div></button>
       <button class="item" data-x="photo">${svg('photo')}<div><div class="t">Photo du rendu</div><div class="s">Image de la vue actuelle, pour Insta ou un client.</div></div></button>
     </div><div class="row"><button class="btn ghost" data-close>Fermer</button></div>`, root => {
@@ -601,7 +752,7 @@ async function doShare(kind) {
   try {
     toast('Préparation du fichier…', 15000);
     await new Promise(r => setTimeout(r, 30));
-    file = kind === 'glb' ? await exportGLB(engine) : kind === 'usdz' ? await exportUSDZ(engine) : kind === 'project' ? exportProject(engine) : await screenshot(engine);
+    file = kind === 'glb' ? await exportGLB(engine) : kind === 'usdz' ? await exportUSDZ(engine) : kind === 'project' ? exportProject(engine) : kind === 'code' ? await exportCode(engine) : kind === 'module' ? exportModule(engine) : await screenshot(engine);
     $('#toast').hidden = true;
   } catch (e) { console.error(e); toast('Export impossible : ' + (e.message || e), 5000); return; }
   // le partage doit partir d'un nouveau geste (exigence de Safari) : on propose les actions dans une fenêtre
@@ -630,8 +781,10 @@ function openMenu() {
     <div class="optrow"><span>Fond</span><div class="seg" id="mBg"><button data-v="studio">Studio</button><button data-v="camera">Caméra</button></div></div>
     <div class="optrow"><span>Caméra</span><div class="seg" id="mFacing"><button data-v="user">Avant</button><button data-v="environment">Arrière</button></div></div>
     <div class="optrow"><span>Murs qui s’effacent</span><div class="seg" id="mCut"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
+    <div class="optrow"><span>Sons de confirmation</span><div class="seg" id="mSound"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="optrow"><span>Grille au sol</span><div class="seg" id="mGrid"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="list" style="margin-top:14px">
+      <button class="item" data-m="jarvis">${svg('sparkle')}<div><div class="t">Cerveau Jarvis</div><div class="s">${brain.key ? 'Actif. Changer de clé ou de modèle.' : 'Créer n’importe quoi à partir d’une phrase.'}</div></div></button>
       <button class="item" data-m="walk">${svg('walk')}<div><div class="t">Visiter</div><div class="s">Te promener dans ta création à hauteur d’yeux.</div></div></button>
       <button class="item" data-m="frame">${svg('frame')}<div><div class="t">Vue d’ensemble</div></div></button>
       <button class="item" data-m="open">${svg('open')}<div><div class="t">Ouvrir un projet</div><div class="s">Un fichier .atelier reçu ou enregistré.</div></div></button>
@@ -644,10 +797,12 @@ function openMenu() {
     seg('#mBg', engine.backdrop, v => setBackdrop(v));
     seg('#mFacing', facing, async v => { facing = v; const had = !!stream; stopCamera(); if (had) { try { await startCamera(); if (hands?.active) hands.mirror = facing === 'user'; } catch (e) { toast(e.message); } } });
     seg('#mCut', engine.cutaway ? 1 : 0, v => engine.cutaway = v === '1');
+    seg('#mSound', soundOn ? 1 : 0, v => { soundOn = v === '1'; try { localStorage.setItem('atelier:son', v); } catch { } if (soundOn) playTick(); });
     seg('#mGrid', engine.showGrid === false ? 0 : 1, v => { engine.showGrid = v === '1'; engine.applyBackdrop(); });
     root.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
       const m = b.dataset.m; closeModal();
-      if (m === 'walk') startWalk(); else if (m === 'frame') engine.frameAll();
+      if (m === 'jarvis') brainSetup();
+      else if (m === 'walk') startWalk(); else if (m === 'frame') engine.frameAll();
       else if (m === 'open') $('#fileInput').click();
       else if (m === 'new') { engine.clear(); toast('Nouveau projet'); }
       else if (m === 'help') showHelp(); else if (m === 'legal') showLegal();
@@ -665,7 +820,7 @@ async function setBackdrop(v) {
 function showHelp() {
   openModal(`<h2>Mode d’emploi</h2>
     <h3>Au doigt</h3><ul><li><b>Touche</b> un élément pour le sélectionner, puis <b>glisse-le</b> pour le déplacer.</li><li><b>Deux doigts</b> sur un élément sélectionné : agrandir et pivoter. Sans sélection : zoomer et déplacer la vue.</li><li><b>Un doigt dans le vide</b> : tourner autour de la scène.</li><li>Touche une <b>partie</b> précise (le tissu d’un canapé, le sol d’une pièce) pour lui donner une matière.</li></ul>
-    <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : deux mains indépendantes. Index tendu pour pointer, rester pointé ou pousser le doigt pour sélectionner, pouce + index pour zoomer (ou agrandir l’objet sélectionné), main ouverte pour tourner, poignet pour pivoter, poing pour déplacer.</li>
+    <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : pouce et index uniquement. Viser avec l’index, pincer-relâcher pour toucher, pincer-glisser pour déplacer ou tourner la vue, écarter pouce et index pour zoomer, deux mains qui pincent pour la taille et la rotation.</li>
       <li><b>Modeler</b> : sélectionne une forme d’argile, un rocher ou un terrain, puis <b>Modeler</b>. Glisse le doigt sur la matière : gonfler, creuser, étirer, lisser, aplatir, pincer, avec symétrie.</li></ul>
     <h3>À la voix</h3><ul><li>« Crée une pièce de 6 sur 4 », « ajoute un canapé », « en velours vert », « le sol en marbre noir »</li><li>« Plus grand », « tourne », « duplique », « supprime », « annule »</li><li>« Ambiance soir », « style Riviera », « propose-moi quelque chose », « visite »</li></ul>
     <h3>Écran lié</h3><p>Sur l’ordi, ouvre l’adresse d’Atelier suivie de <span class="kbd">#ecran</span>. Un code s’affiche : tape-le dans ${svg('screen').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} sur l’iPhone. Tout ce que tu crées s’affiche en direct.</p>
@@ -686,11 +841,24 @@ $('#fileInput').onchange = async e => {
 };
 
 /* ---------- écran lié ---------- */
-let link = null, linkT = null, camT = 0;
+let link = null, linkT = null, camT = 0, linkCode = null, linkManualOff = false;
+// connexion qui se rétablit toute seule si le réseau ou la veille la coupe
+async function linkConnect(c, quiet) {
+  link = await connectTo(c, st => {
+    if (st !== 'closed') return;
+    link = null; setStatus();
+    if (linkManualOff) return;
+    toast('Écran lié perdu, reconnexion…', 2500);
+    let n = 0; const retry = async () => { if (link || linkManualOff || ++n > 20) { if (!link && !linkManualOff) toast('Écran déconnecté'); return; } try { await linkConnect(c, true); toast('Écran reconnecté'); } catch { setTimeout(retry, 3000); } };
+    setTimeout(retry, 1200);
+  });
+  linkCode = c; linkManualOff = false; setStatus(); keepAwake(true); sendScene();
+  clearInterval(linkConnect.ping); linkConnect.ping = setInterval(() => link?.send({ t: 'ping' }), 4000);
+}
 function openLink() {
   const url = location.origin + location.pathname + '#ecran';
   if (link) {
-    openModal(`<h2>Écran lié</h2><p>Connecté. Tout ce que tu crées s’affiche en direct sur l’autre écran.</p><div class="row"><button class="btn ghost" id="lkOff">Déconnecter</button><button class="btn" data-close>OK</button></div>`, r => r.querySelector('#lkOff').onclick = () => { link.peer.destroy(); link = null; setStatus(); closeModal(); toast('Écran délié'); });
+    openModal(`<h2>Écran lié</h2><p>Connecté. Tout ce que tu crées s’affiche en direct sur l’autre écran.</p><div class="row"><button class="btn ghost" id="lkOff">Déconnecter</button><button class="btn" data-close>OK</button></div>`, r => r.querySelector('#lkOff').onclick = () => { linkManualOff = true; link.peer.destroy(); link = null; setStatus(); closeModal(); toast('Écran délié'); if (!needAwake()) keepAwake(false); });
     return;
   }
   openModal(`<h2>Lier un écran</h2>
@@ -704,8 +872,8 @@ function openLink() {
       const c = inp.value.trim(); if (c.length !== 4) { toast('Le code fait 4 caractères'); return; }
       const btn = root.querySelector('#lkGo'); btn.disabled = true; btn.textContent = 'Connexion…';
       try {
-        link = await connectTo(c, st => { if (st === 'closed') { link = null; setStatus(); toast('Écran déconnecté'); } });
-        closeModal(); setStatus(); toast('Écran lié : il affiche ta création en direct'); sendScene();
+        await linkConnect(c);
+        closeModal(); toast('Écran lié : il affiche ta création en direct');
       } catch (e) { btn.disabled = false; btn.textContent = 'Connecter'; toast(e.message || 'Connexion impossible', 4500); }
     };
   });
@@ -766,7 +934,7 @@ else {
 
 async function startDisplay() {
   document.body.classList.add('display');
-  $('#displayUI').hidden = false;
+  $('#displayUI').hidden = false; keepAwake(true);
   setupInput(engine, $('#scene'), ui);
   engine.selBox.visible = false;
   let follow = true, remote = null;

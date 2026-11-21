@@ -49,7 +49,7 @@ export class Sculptor {
     this.active = false; this.tool = 'tirer'; this.radius = 0.25; this.strength = 0.5; this.sym = true;
     this.stroke = null;
     // pinceau visible sur la surface
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 64), new THREE.MeshBasicMaterial({ color: 0xE2C48E, transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide }));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 64), new THREE.MeshBasicMaterial({ color: 0x5DB7F0, transparent: true, opacity: 0.9, depthTest: false, side: THREE.DoubleSide }));
     const dot = new THREE.Mesh(new THREE.CircleGeometry(0.06, 16), ring.material);
     this.brush = new THREE.Group(); this.brush.add(ring, dot); this.brush.visible = false; this.brush.renderOrder = 10;
     engine.helpers.add(this.brush);

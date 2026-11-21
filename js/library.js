@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { material } from './materials.js';
 import { weld, sculptUV } from './sculpt.js';
+import { buildSpec } from './ai.js';
 
 /* ---------- utilitaires ---------- */
 // UV « métriques » par projection selon l'axe dominant de la normale : 1 unité UV = 1 mètre
@@ -676,6 +677,8 @@ function route({ l = 60, w = 12 }) {
 /* ---------- catalogue ---------- */
 // roles : rôles présents → matière par défaut prise dans la palette active
 export const CATALOG = [
+  // créations de Jarvis (objet décrit par l'IA, reconstruit à partir de sa description)
+  { id: 'ia', cat: 'Créations', name: 'Création', build: p => buildSpec(p.spec || { parties: [] }, part), params: { spec: null } },
   // Modeler
   { id: 'argile', cat: 'Modeler', name: 'Boule d’argile', build: p => argile({ ...p, forme: 'boule' }), params: { s: 0.7 }, sculpt: true },
   { id: 'argile-bloc', cat: 'Modeler', name: 'Bloc d’argile', build: p => argile({ ...p, forme: 'bloc' }), params: { s: 0.6 }, sculpt: true },

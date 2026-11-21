@@ -41,6 +41,26 @@
   </div>
 </header>
 
+<!-- dock façon Jarvis : tout est rangé sur le côté, l'écran de travail reste libre -->
+<nav id="dock" aria-label="Outils">
+  <button class="dk" data-dock="create" title="Créer"><i data-i="plus"></i><span>Créer</span></button>
+  <button class="dk" data-dock="jarvis" title="Demander à Atelier"><i data-i="sparkle"></i><span>Jarvis</span></button>
+  <button class="dk" data-dock="matieres" title="Matières"><i data-i="swatch"></i><span>Matières</span></button>
+  <button class="dk" data-dock="styles" title="Styles et modèles"><i data-i="palette"></i><span>Styles</span></button>
+  <button class="dk" data-dock="lumiere" title="Lumière"><i data-i="bulb"></i><span>Lumière</span></button>
+  <button class="dk" data-dock="frame" title="Vue d'ensemble"><i data-i="frame"></i><span>Vue</span></button>
+  <button class="dk" data-dock="walk" title="Visiter"><i data-i="walk"></i><span>Visiter</span></button>
+</nav>
+
+<!-- commande libre (Jarvis) -->
+<form id="cmd" hidden autocomplete="off">
+  <i data-i="sparkle"></i>
+  <input id="cmdInput" type="text" placeholder="Que veux-tu créer ?" enterkeyhint="send" spellcheck="false">
+  <button type="submit" class="ico small" id="cmdGo" aria-label="Envoyer"></button>
+  <button type="button" class="ico small" id="cmdClose" aria-label="Fermer"></button>
+</form>
+
+<div id="objLabel" hidden><b></b><span></span></div>
 <div id="voiceBubble" class="bubble" hidden></div>
 <div id="toast" class="toast" hidden></div>
 <div id="camPip" hidden><video id="pipVideo" playsinline muted></video></div>
@@ -53,13 +73,14 @@
   </div>
   <div id="selParts" class="chips"></div>
   <div class="sel-tools">
-    <button data-act="sculpt" class="sculpt-btn" hidden><i data-i="sculpt"></i><span>Modeler</span></button>
-    <button data-act="material"><i data-i="swatch"></i><span>Matière</span></button>
-    <button data-act="params"><i data-i="sliders"></i><span>Réglages</span></button>
-    <button data-act="rotate"><i data-i="rotate"></i><span>Pivoter</span></button>
-    <button data-act="duplicate"><i data-i="copy"></i><span>Dupliquer</span></button>
-    <button data-act="focus"><i data-i="focus"></i><span>Cadrer</span></button>
-    <button data-act="delete" class="danger"><i data-i="trash"></i><span>Supprimer</span></button>
+    <button data-act="sculpt" class="sculpt-btn" hidden title="Modeler"><i data-i="sculpt"></i><span>Modeler</span></button>
+    <button data-act="material" title="Matière"><i data-i="swatch"></i><span>Matière</span></button>
+    <button data-act="params" title="Réglages"><i data-i="sliders"></i><span>Réglages</span></button>
+    <button data-act="ai" title="Modifier à la voix ou au texte"><i data-i="sparkle"></i><span>Jarvis</span></button>
+    <button data-act="rotate" title="Pivoter"><i data-i="rotate"></i><span>Pivoter</span></button>
+    <button data-act="duplicate" title="Dupliquer"><i data-i="copy"></i><span>Copier</span></button>
+    <button data-act="focus" title="Cadrer"><i data-i="focus"></i><span>Cadrer</span></button>
+    <button data-act="delete" class="danger" title="Supprimer"><i data-i="trash"></i><span>Suppr.</span></button>
   </div>
   <div id="params" class="params" hidden></div>
   <div id="sculptBar" hidden>
@@ -71,9 +92,8 @@
 </section>
 
 <!-- bibliothèque -->
-<section id="sheet">
-  <button id="sheetHandle" aria-label="Replier la bibliothèque"><span></span></button>
-  <nav id="tabs" class="tabs"></nav>
+<section id="sheet" class="collapsed">
+  <div class="sheet-head"><nav id="tabs" class="tabs"></nav><button class="ico small" id="sheetClose" aria-label="Fermer la bibliothèque"></button></div>
   <div id="tray" class="tray"></div>
 </section>
 

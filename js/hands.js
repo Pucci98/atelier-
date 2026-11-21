@@ -1,33 +1,24 @@
 // Atelier — pilotage aux mains par la caméra (MediaPipe Hand Landmarker, calcul 100 % sur l'appareil)
 //
-// Chaque main est suivie et interprétée séparément : on peut pointer d'une main et tourner la vue de l'autre.
-// Seuls le pouce, l'index et le majeur décident du geste : l'annulaire et l'auriculaire sont ignorés,
-// pour que les doigts « qui traînent » ne déclenchent rien.
+// UNIQUEMENT LE POUCE ET L'INDEX. Les trois autres doigts sont totalement ignorés : ils peuvent être
+// repliés, tendus, bouger… rien ne se déclenche. Chaque main est suivie séparément.
 //
-//  • POINTER      : index tendu, majeur replié → le curseur suit le bout de l'index, ce qu'il vise s'éclaire
-//  • SÉLECTIONNER : rester pointé sur la cible (l'anneau se remplit), ou pousser le doigt vers l'écran
-//  • ZOOMER       : pouce et index qui s'écartent / se rapprochent, comme sur un téléphone
-//                   (objet sélectionné → il grandit / rétrécit ; sinon la vue zoome)
-//  • TOURNER      : main ouverte qui balaie (gauche, droite, haut, bas)
-//  • PIVOTER      : objet sélectionné, main ouverte, on tourne le poignet comme un bouton
-//  • DÉPLACER     : objet sélectionné, poing fermé → l'objet suit la main, on rouvre pour lâcher
-//  • MODELER      : en mode modelage, on pousse le doigt vers l'écran et on le garde enfoncé pour travailler la matière
+//  • VISER            : le curseur suit le bout de l'index ; ce qu'il vise s'éclaire avec son nom
+//  • TOUCHER (clic)   : pincer pouce + index puis relâcher → sélectionne l'objet, clique le bouton, ou désélectionne
+//  • GLISSER          : pincer, bouger, relâcher → sur un objet : on le déplace ; dans le vide : on tourne la vue
+//  • ZOOMER           : sans pincer, écarter / rapprocher pouce et index, comme sur un téléphone
+//                       (objet sélectionné → il grandit / rétrécit ; sinon la vue zoome)
+//  • DEUX MAINS       : les deux pincent et s'écartent → taille / zoom ; elles tournent l'une autour de l'autre → rotation
+//  • MODELER          : en mode modelage, pincer sur la matière et glisser
 import * as THREE from 'three';
 
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-const CONNECTIONS = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
-const LABEL = { zoom: 'Zoom', scale: 'Taille', orbit: 'Rotation', twist: 'Pivoter', grab: 'Déplacer', sculpt: 'Modeler' };
-const DWELL = 750;      // ms à rester pointé pour sélectionner
-const STILL = 22;       // px de tolérance pendant ce temps
+const BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8]]; // pouce et index seulement
+const LABEL = { zoom: 'Zoom', scale: 'Taille', orbit: 'Rotation', move: 'Déplacer', sculpt: 'Modeler', two: 'Deux mains', twoscale: 'Taille', pinch: '' };
+const PINCH_ON = 0.3, PINCH_OFF = 0.55;   // écart pouce-index / taille de la main : fermé / rouvert (marqué, avec hystérésis)
+const DRAG = 26;                          // px de déplacement avant que le pincement devienne un glisser
 
-const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z - b.z) * 0.6);
-function angle(a, b, c) {
-  const v1 = [a.x - b.x, a.y - b.y, (a.z - b.z) * 0.6], v2 = [c.x - b.x, c.y - b.y, (c.z - b.z) * 0.6];
-  const dot = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
-  const n = Math.hypot(...v1) * Math.hypot(...v2) || 1;
-  return Math.acos(Math.max(-1, Math.min(1, dot / n))) * 180 / Math.PI;
-}
-const straight = (lm, mcp, pip, tip) => angle(lm[mcp], lm[pip], lm[tip]);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z - b.z) * 0.5);
 
 class HandState {
   constructor(i) {
@@ -38,10 +29,8 @@ class HandState {
     this.reset();
   }
   reset() {
-    Object.assign(this, { seen: false, lost: 0, x: 0, y: 0, palmX: 0, palmY: 0, hist: [], pose: null, candidate: null, poseCount: 0, mode: 'idle',
-      ext: { index: false, middle: false }, gapHist: [], gapRef: null, zoomLastGap: null, zoomLastMove: 0, scaled: false,
-      sizeHist: [], pressBase: null, pressed: false, lastTap: 0, quietUntil: 0,
-      dwell: null, dwellDone: null, palm: null, wh: [], roll0: 0, rot0: 0, grabOff: null, grabY: 0, grabMoved: false, sculpting: false });
+    Object.assign(this, { seen: false, lost: 0, x: 0, y: 0, ox: 0, oy: 0, palmX: 0, palmY: 0, hist: [], pinched: false, pinchFrames: 0, mode: 'aim',
+      press: null, gapHist: [], zoom: null, quietUntil: 0, lastPinch: 0 });
   }
 }
 
@@ -51,13 +40,14 @@ export class Hands {
     this.ctx = overlay.getContext('2d');
     this.active = false; this.landmarker = null; this.mirror = true;
     this.hands = [new HandState(0), new HandState(1)];
+    this.two = null;
   }
 
   async load() {
     if (this.landmarker) return;
     const { FilesetResolver, HandLandmarker } = await import('../lib/mediapipe/vision_bundle.mjs');
     const files = await FilesetResolver.forVisionTasks(new URL('../lib/mediapipe/wasm', import.meta.url).href);
-    const opts = d => ({ baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.55 });
+    const opts = d => ({ baseOptions: { modelAssetPath: MODEL, delegate: d }, runningMode: 'VIDEO', numHands: 2, minHandDetectionConfidence: 0.55, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
     try { this.landmarker = await HandLandmarker.createFromOptions(files, opts('GPU')); }
     catch { this.landmarker = await HandLandmarker.createFromOptions(files, opts('CPU')); }
   }
@@ -65,12 +55,13 @@ export class Hands {
     this.mirror = mirror;
     await this.load();
     this.active = true; document.body.classList.add('hands-on');
-    const loop = () => { if (!this.active) return; this.tick(); requestAnimationFrame(loop); };
+    const loop = () => { if (!this.active) return; try { this.tick(); } catch (e) { console.error(e); } requestAnimationFrame(loop); };
     loop();
   }
   stop() {
     this.active = false; document.body.classList.remove('hands-on');
-    for (const h of this.hands) { this.endMode(h); h.el.className = 'hand-cursor'; h.reset(); }
+    for (const h of this.hands) { this.release(h, true); h.el.className = 'hand-cursor'; h.reset(); }
+    this.endTwo();
     this.ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
     this.engine.setHover?.(null); this.setUiHover(null);
     this.engine.sculptor.showBrush(null);
@@ -87,28 +78,6 @@ export class Hands {
     return { x: ox + nx * dw, y: oy + ny * dh };
   }
 
-  // posture : seuls pouce, index et majeur comptent ; seuils à hystérésis pour éviter les clignotements
-  readPose(h, lm) {
-    const size = d3(lm[0], lm[9]) || 0.1;
-    const fing = (name, mcp, pip, tip) => {
-      const a = straight(lm, mcp, pip, tip), far = d3(lm[0], lm[tip]) > d3(lm[0], lm[pip]) * 1.08;
-      if (h.ext[name]) { if (a < 135 || !far) h.ext[name] = false; } else if (a > 158 && far) h.ext[name] = true;
-      return a;
-    };
-    const idxAngle = fing('index', 5, 6, 8);
-    fing('middle', 9, 10, 12);
-    const ring = straight(lm, 13, 14, 16) > 150; // seulement pour reconnaître la main grande ouverte
-    const gap = d3(lm[4], lm[8]) / size;
-    const thumbOut = d3(lm[4], lm[9]) / size > 0.7;
-    let pose;
-    if (h.ext.index && h.ext.middle && ring) pose = 'open';
-    else if (h.ext.index && !h.ext.middle) pose = 'point';
-    else if (!h.ext.index && !h.ext.middle && idxAngle < 100) pose = 'fist';
-    else if (!h.ext.middle && gap < 0.35) pose = 'point'; // pince fermée (début de zoom) : on reste en mode pointer
-    else pose = 'other';
-    return { pose, size, gap, idxAngle, thumbOut };
-  }
-
   tick() {
     const v = this.video;
     if (!this.landmarker || v.readyState < 2) return;
@@ -116,215 +85,214 @@ export class Hands {
     let res; try { res = this.landmarker.detectForVideo(v, now); } catch { return; }
     const dpr = devicePixelRatio;
     this.overlay.width = window.innerWidth * dpr; this.overlay.height = window.innerHeight * dpr;
-    const ctx = this.ctx;
     const found = (res.landmarks || []).slice(0, 2).map(lm => ({ lm, P: lm.map(p => this.toScreen(p.x, p.y)) }));
-    // chaque main garde « son » curseur : appariement par proximité avec la position précédente
+    // chaque main garde son curseur : appariement par proximité avec la position précédente
     const slots = [null, null]; const [h0, h1] = this.hands;
-    const dist = (f, h) => h.seen ? Math.hypot(f.P[9].x - h.palmX, f.P[9].y - h.palmY) : 1e5 + (h.i ? -f.P[9].x : f.P[9].x);
+    const d = (f, h) => h.seen ? Math.hypot(f.P[5].x - h.palmX, f.P[5].y - h.palmY) : 1e5 + (h.i ? -f.P[5].x : f.P[5].x);
     if (found.length === 2) {
       const [a, b] = found;
-      if (dist(a, h0) + dist(b, h1) <= dist(b, h0) + dist(a, h1)) { slots[0] = a; slots[1] = b; } else { slots[0] = b; slots[1] = a; }
-    } else if (found.length === 1) slots[h1.seen && (!h0.seen || dist(found[0], h1) < dist(found[0], h0)) ? 1 : 0] = found[0];
+      if (d(a, h0) + d(b, h1) <= d(b, h0) + d(a, h1)) { slots[0] = a; slots[1] = b; } else { slots[0] = b; slots[1] = a; }
+    } else if (found.length === 1) slots[h1.seen && (!h0.seen || d(found[0], h1) < d(found[0], h0)) ? 1 : 0] = found[0];
+
     let hovered = null, uiHover = null, brush = null;
     for (let k = 0; k < 2; k++) {
       const h = this.hands[k], f = slots[k];
       if (!f) {
-        if (h.seen && ++h.lost > 6) { this.endMode(h); h.seen = false; h.el.classList.remove('on'); h.pose = null; h.candidate = null; }
+        if (h.seen && ++h.lost > 15) { this.release(h, true); h.seen = false; h.el.classList.remove('on'); }
         continue;
       }
       h.lost = 0;
-      this.draw(ctx, f.P, dpr, k);
+      this.draw(f.P, dpr, k, h.pinched);
       const r = this.update(h, f.lm, f.P, now);
       if (r?.hover) hovered = r.hover; if (r?.ui) uiHover = r.ui; if (r?.brush) brush = r.brush;
     }
+    this.updateTwo();
     this.engine.setHover?.(hovered);
     this.setUiHover(uiHover);
     const sc = this.engine.sculptor;
     if (sc.active && !sc.stroke) sc.showBrush(brush);
   }
 
-  draw(ctx, P, dpr, k) {
-    ctx.lineWidth = 2 * dpr; ctx.lineCap = 'round';
-    ctx.strokeStyle = k ? 'rgba(196,212,232,0.7)' : 'rgba(232,214,180,0.75)';
-    ctx.beginPath(); for (const [a, b] of CONNECTIONS) { ctx.moveTo(P[a].x * dpr, P[a].y * dpr); ctx.lineTo(P[b].x * dpr, P[b].y * dpr); } ctx.stroke();
-    ctx.fillStyle = 'rgba(255,244,222,0.95)';
-    for (const i of [4, 8, 12]) { ctx.beginPath(); ctx.arc(P[i].x * dpr, P[i].y * dpr, 3.2 * dpr, 0, 7); ctx.fill(); }
+  draw(P, dpr, k, pinched) {
+    const ctx = this.ctx;
+    ctx.lineWidth = 2.4 * dpr; ctx.lineCap = 'round';
+    ctx.strokeStyle = pinched ? 'rgba(154,214,255,0.95)' : (k ? 'rgba(170,205,235,0.6)' : 'rgba(205,230,250,0.7)');
+    ctx.beginPath(); for (const [a, b] of BONES) { ctx.moveTo(P[a].x * dpr, P[a].y * dpr); ctx.lineTo(P[b].x * dpr, P[b].y * dpr); } ctx.stroke();
+    ctx.fillStyle = pinched ? 'rgba(154,214,255,1)' : 'rgba(238,244,250,0.95)';
+    for (const i of [4, 8]) { ctx.beginPath(); ctx.arc(P[i].x * dpr, P[i].y * dpr, 4.5 * dpr, 0, 7); ctx.fill(); }
   }
 
   update(h, lm, P, now) {
-    const info = this.readPose(h, lm);
-    h.palmX = P[9].x; h.palmY = P[9].y;
-    if (info.pose === h.candidate) h.poseCount++; else { h.candidate = info.pose; h.poseCount = 1; }
-    const need = h.mode === 'zoom' || h.mode === 'grab' || h.mode === 'twist' || h.sculpting ? 6 : 4; // un geste en cours tient bon
-    const stable = h.poseCount >= need ? h.candidate : h.pose;
-    if (stable !== h.pose) { this.endMode(h); h.pose = stable; this.beginMode(h, P); }
+    const e = this.engine;
+    const size = dist(lm[0], lm[5]) || 0.1;
+    const gap = dist(lm[4], lm[8]) / size;
+    h.palmX = P[5].x; h.palmY = P[5].y;
 
-    // curseur au bout de l'index, lissé (plus fort quand on bouge peu → visée précise)
-    const tip = P[8];
-    if (!h.seen) { h.x = tip.x; h.y = tip.y; h.seen = true; }
-    if (h.mode !== 'zoom') {
-      const sp = Math.hypot(tip.x - h.x, tip.y - h.y);
-      const k = Math.min(0.6, 0.12 + sp / 110);
-      h.x += (tip.x - h.x) * k; h.y += (tip.y - h.y) * k;
+    // pincement franc, confirmé sur 2 images, avec hystérésis
+    const want = h.pinched ? gap < PINCH_OFF : gap < PINCH_ON;
+    if (want !== h.pinched) { if (++h.pinchFrames >= 2) { h.pinchFrames = 0; h.pinched = want; } } else h.pinchFrames = 0;
+
+    // curseur : bout de l'index (point milieu pouce-index pendant le pincement), sans saut au changement
+    const raw = h.pinched ? { x: (P[4].x + P[8].x) / 2, y: (P[4].y + P[8].y) / 2 } : P[8];
+    if (!h.seen) { h.x = raw.x; h.y = raw.y; h.seen = true; }
+    if (h.wasPinched !== h.pinched) { h.ox += h.x - raw.x - h.ox; h.oy += h.y - raw.y - h.oy; h.wasPinched = h.pinched; }
+    h.ox *= 0.85; h.oy *= 0.85;
+    const tx = raw.x + h.ox, ty = raw.y + h.oy;
+    if (!h.zoom) {
+      const sp = Math.hypot(tx - h.x, ty - h.y);
+      const k = Math.min(0.65, 0.16 + sp / 100);
+      h.x += (tx - h.x) * k; h.y += (ty - h.y) * k;
     }
-    h.hist.push({ t: now, x: h.x, y: h.y }); while (h.hist.length && now - h.hist[0].t > 800) h.hist.shift();
+    h.hist.push({ t: now, x: h.x, y: h.y }); while (h.hist.length && now - h.hist[0].t > 600) h.hist.shift();
 
     let out = null;
-    if (h.pose === 'point') out = this.doPoint(h, info, now);
-    else if (h.pose === 'open') this.doOpen(h, P, now);
-    else if (h.pose === 'fist') this.doGrab(h, P);
-    else h.mode = 'idle';
+    if (h.pinched && !h.press) this.pinchStart(h, now);
+    if (!h.pinched && h.press) this.release(h, false, now);
+    if (h.pinched) this.pinchMove(h, now);
+    else out = this.aim(h, gap, now);
 
-    const pos = h.pose === 'open' || h.pose === 'fist' ? P[9] : { x: h.x, y: h.y };
     h.el.classList.add('on');
-    h.el.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
-    const shown = h.mode === 'zoom' && this.engine.selected ? 'scale' : h.mode;
-    h.el.dataset.mode = h.mode; h.el.dataset.pose = h.pose || '';
+    h.el.classList.toggle('pinch', h.pinched);
+    h.el.style.transform = `translate(${h.x}px, ${h.y}px)`;
+    const shown = h.mode === 'zoom' && e.selected ? 'scale' : h.mode;
+    h.el.dataset.mode = h.mode;
     h.el.querySelector('.hc-label').textContent = LABEL[shown] || '';
     return out;
   }
 
-  beginMode(h, P) {
-    h.mode = { point: 'point', open: 'orbit', fist: 'grab' }[h.pose] || 'idle';
-    h.gapHist = []; h.dwell = null; h.palm = null; h.wh = []; h.sizeHist = []; h.pressed = false; h.pressBase = null;
-    h.el.style.setProperty('--dwell', 0);
-    if (h.pose === 'fist') {
-      const e = this.engine;
-      if (e.selected && !e.sculptor.active) {
-        h.grabY = e.selected.position.y;
-        const fp = e.floorPoint(P[9].x, P[9].y, h.grabY);
-        h.grabOff = fp ? e.selected.position.clone().sub(fp) : null; h.grabMoved = false;
-      } else h.grabOff = null;
-    }
-  }
-  endMode(h) {
+  // main ouverte (pas de pincement) : viser + zoom façon téléphone
+  aim(h, gap, now) {
     const e = this.engine;
-    if (h.mode === 'grab' && h.grabOff && h.grabMoved) e.commit();
-    if (h.mode === 'zoom') { if (h.scaled) e.commit(); h.scaled = false; h.quietUntil = performance.now() + 700; }
-    if (h.mode === 'twist') e.commit();
-    if (h.sculpting) { h.sculpting = false; if (e.sculptor.end()) e.commit(); }
-    h.grabOff = null; h.palm = null; h.pressed = false;
-    h.el.style.setProperty('--dwell', 0);
-  }
-
-  // pointer, sélectionner, zoomer, modeler
-  doPoint(h, info, now) {
-    const e = this.engine;
-    // --- zoom façon téléphone : l'écart pouce-index change franchement, la main reste en place
-    h.gapHist.push({ t: now, g: info.gap, out: info.thumbOut, x: h.x, y: h.y }); while (h.gapHist.length && now - h.gapHist[0].t > 350) h.gapHist.shift();
-    const first = h.gapHist[0], dg = info.gap - first.g;
-    const handStill = Math.hypot(h.x - first.x, h.y - first.y) < 70;
-    const zoomOk = (dg > 0 ? info.thumbOut : first.out) && handStill && !h.pressed && !h.sculpting;
-    if (h.mode !== 'zoom' && zoomOk && Math.abs(dg) > 0.3 && h.gapHist.length > 3) {
-      h.mode = 'zoom'; h.gapRef = first.g; h.zoomLastGap = info.gap; h.zoomLastMove = now; h.dwell = null; h.el.style.setProperty('--dwell', 0);
-    }
-    if (h.mode === 'zoom') {
-      const prev = h.gapRef; h.gapRef = info.gap;
-      const f = (prev + 0.15) / (info.gap + 0.15);
-      if (Math.abs(f - 1) > 0.002) {
-        if (e.selected) {
-          const k = THREE.MathUtils.clamp(e.selected.scale.x / f, 0.02, 400) / e.selected.scale.x;
-          e.selected.scale.multiplyScalar(k); h.scaled = true; this.ui.showDims?.();
-        } else { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(e.orbit.radius * f, 0.3, 4000); }
+    h.gapHist.push({ t: now, g: gap, x: h.x, y: h.y }); while (h.gapHist.length && now - h.gapHist[0].t > 380) h.gapHist.shift();
+    const first = h.gapHist[0];
+    if (!h.zoom && now > h.quietUntil && h.gapHist.length > 4) {
+      const dg = gap - first.g, minG = Math.min(...h.gapHist.map(s => s.g));
+      const still = Math.hypot(h.x - first.x, h.y - first.y) < 70;
+      if (Math.abs(dg) > 0.5 && minG > PINCH_ON + 0.05 && still) {
+        // on mémorise l'état de départ : si c'était en fait un pincement qui se prépare, on annulera
+        h.zoom = { gap: first.g, t: now, last: now, lastGap: gap, start: e.selected ? { obj: e.selected, scale: e.selected.scale.clone() } : { radius: e.orbit.radius }, changed: false };
       }
-      if (Math.abs(info.gap - h.zoomLastGap) > 0.03) { h.zoomLastGap = info.gap; h.zoomLastMove = now; }
-      if (now - h.zoomLastMove > 500) { if (h.scaled) { h.scaled = false; e.commit(); } h.mode = 'point'; h.gapHist = []; h.quietUntil = now + 500; }
+    }
+    if (h.zoom) {
+      const z = h.zoom, f = (z.gap + 0.2) / (gap + 0.2); z.gap = gap;
+      if (Math.abs(f - 1) > 0.003) {
+        if (e.selected) { const k = THREE.MathUtils.clamp(e.selected.scale.x / f, 0.02, 400) / e.selected.scale.x; e.selected.scale.multiplyScalar(k); this.ui.showDims?.(); }
+        else { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(e.orbit.radius * f, 0.3, 4000); }
+        z.changed = true;
+      }
+      if (Math.abs(gap - z.lastGap) > 0.04) { z.lastGap = gap; z.last = now; }
+      h.mode = 'zoom';
+      if (now - z.last > 500) this.endZoom(h, true);
       return null;
     }
-    if (!h.sculpting) h.mode = 'point';
+    h.mode = 'aim';
 
-    // --- appui « pousser le doigt » : la main grossit nettement et vite
-    h.sizeHist.push({ t: now, v: info.size }); while (h.sizeHist.length && now - h.sizeHist[0].t > 1200) h.sizeHist.shift();
-    if (!h.pressed) {
-      const old = h.sizeHist.filter(s => now - s.t > 250);
-      if (old.length > 3 && now > h.quietUntil) {
-        const base = old.reduce((a, s) => a + s.v, 0) / old.length;
-        const moved = Math.hypot(h.x - h.hist[0].x, h.y - h.hist[0].y);
-        if (info.size > base * 1.12 && moved < 90) {
-          h.pressed = true; h.pressBase = base;
-          const ref = h.hist.find(p => now - p.t < 300) || { x: h.x, y: h.y };
-          if (e.sculptor.active && e.selected && e.sculptor.begin(e.selected, ref.x, ref.y)) { h.sculpting = true; h.mode = 'sculpt'; }
-          else this.tap(h, ref.x, ref.y, now);
-        }
-      }
-    } else {
-      if (h.sculpting) e.sculptor.move(h.x, h.y);
-      if (info.size < h.pressBase * 1.05) { // doigt revenu
-        h.pressed = false; h.sizeHist = []; h.quietUntil = now + 250;
-        if (h.sculpting) { h.sculpting = false; if (e.sculptor.end()) e.commit(); h.mode = 'point'; }
-      }
-    }
-    if (h.sculpting) return null;
-
-    // --- survol
     const ui = this.uiTarget(h.x, h.y);
     const hit = ui ? null : e.pick(h.x, h.y);
-    const target = ui || hit?.object || null;
     h.el.classList.toggle('over-ui', !!ui); h.el.classList.toggle('over-obj', !!hit);
     const brush = !ui && e.sculptor.active && e.selected ? e.sculptor.hit(e.selected, h.x, h.y) : null;
-
-    // --- sélection en restant pointé (sur la forme en cours de modelage, c'est l'appui qui modèle)
-    const dwellAllowed = now > h.quietUntil && !brush && target && h.dwellDone !== target;
-    if (!dwellAllowed) { h.dwell = null; h.el.style.setProperty('--dwell', 0); }
-    else if (!h.dwell || h.dwell.target !== target || Math.hypot(h.x - h.dwell.x, h.y - h.dwell.y) > STILL) h.dwell = { target, t: now, x: h.x, y: h.y };
-    else {
-      const p = (now - h.dwell.t) / DWELL; h.el.style.setProperty('--dwell', Math.min(1, p).toFixed(3));
-      if (p >= 1) { this.tap(h, h.dwell.x, h.dwell.y, now); h.dwell = null; h.el.style.setProperty('--dwell', 0); }
-    }
-    if (h.dwellDone && h.dwellDone !== target) h.dwellDone = null; // on a quitté la cible : elle redevient sélectionnable
     return { hover: hit?.object && hit.object !== e.selected ? hit.object : null, ui, brush };
   }
-
-  tap(h, x, y, now) {
+  endZoom(h, keep) {
+    const z = h.zoom; if (!z) return;
     const e = this.engine;
-    if (now - h.lastTap < 500) return; h.lastTap = now;
+    if (!keep) { // le « zoom » était le début d'un pincement : on remet tout comme avant
+      if (z.start.obj) z.start.obj.scale.copy(z.start.scale); else if (z.start.radius) e.orbit.radius = z.start.radius;
+      this.ui.showDims?.();
+    } else if (z.changed && z.start.obj) e.commit();
+    h.zoom = null; h.gapHist = []; h.quietUntil = performance.now() + 350; h.mode = 'aim';
+  }
+
+  pinchStart(h, now) {
+    const e = this.engine;
+    if (h.zoom) this.endZoom(h, now - h.zoom.t > 600); // un vrai zoom déjà avancé est gardé, sinon annulé
+    // point visé juste avant de pincer (le geste de pincer fait bouger le doigt)
+    const ref = h.hist.find(p => now - p.t < 160) || { x: h.x, y: h.y };
+    const ui = this.uiTarget(ref.x, ref.y);
+    const hit = ui ? null : e.pick(ref.x, ref.y);
+    h.press = { t: now, x: ref.x, y: ref.y, ui, hit, dragging: false, mode: null };
+    h.mode = 'pinch';
+    window.atelierTick?.(520);
+  }
+
+  pinchMove(h) {
+    const e = this.engine, p = h.press; if (!p) return;
+    if (this.two) return; // les deux mains travaillent ensemble
+    const moved = Math.hypot(h.x - p.x, h.y - p.y);
+    if (!p.dragging && moved > DRAG) {
+      p.dragging = true; p.lx = h.x; p.ly = h.y;
+      if (p.ui?.type === 'range') p.mode = 'range';
+      else if (p.ui) p.mode = 'none';
+      else if (e.sculptor.active && e.selected && e.sculptor.begin(e.selected, p.x, p.y)) p.mode = 'sculpt';
+      else if (p.hit) {
+        if (e.selected !== p.hit.object) e.setSelection(p.hit.object, p.hit.role);
+        p.mode = 'move'; p.planeY = e.selected.position.y;
+        const fp = e.floorPoint(p.x, p.y, p.planeY); p.off = fp ? e.selected.position.clone().sub(fp) : null;
+      } else p.mode = 'orbit';
+    }
+    if (!p.dragging) return;
+    h.mode = p.mode === 'none' || p.mode === 'range' ? 'pinch' : p.mode;
+    if (p.mode === 'move' && p.off && e.selected) {
+      const fp = e.floorPoint(h.x, h.y, p.planeY);
+      if (fp) { const np = fp.add(p.off); e.selected.position.x = Math.round(np.x * 20) / 20; e.selected.position.z = Math.round(np.z * 20) / 20; p.moved = true; }
+    } else if (p.mode === 'orbit') {
+      e.orbitBy((h.x - p.lx) * 0.008, (h.y - p.ly) * 0.007);
+    } else if (p.mode === 'sculpt') e.sculptor.move(h.x, h.y);
+    else if (p.mode === 'range') {
+      const r = p.ui.getBoundingClientRect(); const t = Math.max(0, Math.min(1, (h.x - r.left) / r.width));
+      p.ui.value = +p.ui.min + (+p.ui.max - +p.ui.min) * t; p.ui.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    p.lx = h.x; p.ly = h.y;
+  }
+
+  release(h, lost, now = performance.now()) {
+    const e = this.engine, p = h.press;
+    if (h.zoom) this.endZoom(h, true);
+    if (!p) return;
+    h.press = null; h.mode = 'aim';
+    if (lost) { if (p.mode === 'sculpt' && e.sculptor.end()) e.commit(); else if (p.moved) e.commit(); return; }
+    if (p.dragging) {
+      if (p.mode === 'move' && p.moved) e.commit();
+      else if (p.mode === 'sculpt') { if (e.sculptor.end()) e.commit(); }
+      else if (p.mode === 'range') p.ui.dispatchEvent(new Event('change', { bubbles: true }));
+      return;
+    }
+    if (now - p.t > 900) return; // pincement tenu longtemps sans bouger : on ne fait rien
+    // pincer-relâcher = toucher
     h.el.classList.remove('tap'); void h.el.offsetWidth; h.el.classList.add('tap');
-    const ui = this.uiTarget(x, y);
-    if (ui) { ui.click(); ui.classList.add('hand-clicked'); setTimeout(() => ui.classList.remove('hand-clicked'), 250); h.dwellDone = ui; return; }
-    const hit = e.pick(x, y);
-    if (hit) { e.setSelection(hit.object, hit.role); h.dwellDone = hit.object; }
+    window.atelierTick?.(760);
+    if (p.ui) { p.ui.click(); p.ui.classList.add('hand-clicked'); setTimeout(() => p.ui.classList.remove('hand-clicked'), 250); return; }
+    if (p.hit) e.setSelection(p.hit.object, p.hit.role);
     else e.setSelection(null);
   }
 
-  // main ouverte : balayer pour tourner la vue, tourner le poignet pour pivoter l'objet sélectionné
-  doOpen(h, P, now) {
-    const e = this.engine, p = P[0];
-    const roll = Math.atan2(P[9].x - P[0].x, -(P[9].y - P[0].y));
-    h.wh = h.wh.filter(s => now - s.t < 400); h.wh.push({ t: now, x: p.x, y: p.y, r: roll });
-    if (!h.palm) { h.palm = { x: p.x, y: p.y }; return; }
-    if (e.selected && h.mode !== 'twist' && h.wh.length > 3) {
-      const h0 = h.wh[0];
-      let dr = roll - h0.r; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
-      const drift = Math.max(...h.wh.map(s => Math.hypot(s.x - h0.x, s.y - h0.y)));
-      if (Math.abs(dr) > 0.3 && drift < 45) { h.mode = 'twist'; h.roll0 = h0.r; h.rot0 = e.selected.rotation.y; }
-    }
-    if (h.mode === 'twist' && e.selected) {
-      let dr = roll - h.roll0; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
-      let r = h.rot0 - dr * 1.4; const step = Math.PI / 12, near = Math.round(r / step) * step; if (Math.abs(r - near) < 0.05) r = near;
-      e.selected.rotation.y = r; this.ui.showDims?.();
-      h.palm.x = p.x; h.palm.y = p.y;
-      return;
-    }
-    h.mode = 'orbit';
-    const dx = p.x - h.palm.x, dy = p.y - h.palm.y;
-    h.palm.x += dx * 0.6; h.palm.y += dy * 0.6;
-    if (Math.hypot(dx, dy) > 0.8) e.orbitBy(dx * 0.006, dy * 0.005);
+  // deux mains qui pincent en même temps : taille / zoom et rotation
+  updateTwo() {
+    const [a, b] = this.hands, e = this.engine;
+    const both = a.seen && b.seen && a.pinched && b.pinched && a.press && b.press && !a.press.ui && !b.press.ui;
+    if (both && !this.two) {
+      this.two = { d: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x), obj: e.sculptor.active ? null : e.selected, radius: e.orbit.radius, az: e.orbit.az };
+      if (this.two.obj) { this.two.scale = this.two.obj.scale.clone(); this.two.rot = this.two.obj.rotation.y; }
+      for (const h of this.hands) { if (h.press?.mode === 'sculpt') e.sculptor.end(); h.press.dragging = true; h.press.mode = 'none'; }
+    } else if (both && this.two) {
+      const t = this.two, d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const k = THREE.MathUtils.clamp(d / Math.max(t.d, 1), 0.05, 20);
+      let da = ang - t.ang; da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (t.obj && t.obj.parent) { t.obj.scale.copy(t.scale).multiplyScalar(k); t.obj.rotation.y = t.rot - da; this.ui.showDims?.(); }
+      else { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(t.radius / k, 0.3, 4000); e.orbit.az = t.az + da; }
+      for (const h of this.hands) h.mode = t.obj ? 'twoscale' : 'two';
+    } else if (!both && this.two) this.endTwo();
   }
-
-  doGrab(h, P) {
-    const e = this.engine;
-    if (!e.selected || !h.grabOff) return;
-    const fp = e.floorPoint(P[9].x, P[9].y, h.grabY);
-    if (!fp) return;
-    const np = fp.add(h.grabOff);
-    const nx = Math.round(np.x * 20) / 20, nz = Math.round(np.z * 20) / 20;
-    if (nx !== e.selected.position.x || nz !== e.selected.position.z) { e.selected.position.x = nx; e.selected.position.z = nz; h.grabMoved = true; }
+  endTwo() {
+    if (!this.two) return;
+    if (this.two.obj) this.engine.commit();
+    this.two = null;
   }
 
   uiTarget(x, y) {
     const el = document.elementFromPoint(x, y);
     if (!el || el.tagName === 'CANVAS') return null;
-    return el.closest('button, a, [data-hand], .card, .chip, summary');
+    return el.closest('button, a, [data-hand], .card, .chip, summary, input[type=range]');
   }
   setUiHover(t) {
     if (this._hov && this._hov !== t) this._hov.classList.remove('hand-hover');

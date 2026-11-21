@@ -1,10 +1,11 @@
 // Atelier — moteur 3D : scène, caméra, ambiances, éléments, sélection, historique
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { material, PALETTES } from './materials.js';
+import { material, PALETTES, cloneMaterial } from './materials.js';
 import { getItem } from './library.js';
 import { Sculptor, packSculpt, unpackSculpt } from './sculpt.js';
 
+const lookCache = {};
 const ROLES = ['sol', 'mur', 'mobilier', 'textile', 'metal', 'verre', 'corps', 'vetement', 'forme', 'terrain', 'roche', 'batiment', 'toit', 'trottoir', 'route', 'herbe', 'marquage'];
 const DEFAULT_MATS = { sol: 'chene', mur: 'enduit', mobilier: 'chene', textile: 'lin', metal: 'acier-noir', verre: 'verre', corps: 'mannequin', vetement: 'lin', forme: 'argile', terrain: 'terrain', roche: 'roche', batiment: 'platre', toit: 'argile-grise', trottoir: 'beton-cire', route: 'asphalte', herbe: 'herbe', marquage: '#ecebe6' };
 export { DEFAULT_MATS };
@@ -52,10 +53,10 @@ export class Engine extends EventTarget {
 
     // sélection
     this.selected = null; this.selectedRole = null;
-    this.selBox = new THREE.Box3Helper(new THREE.Box3(), 0xC8A36A); this.selBox.visible = false; this.helpers.add(this.selBox);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.98, 1, 96), new THREE.MeshBasicMaterial({ color: 0xC8A36A, transparent: true, opacity: 0.9, depthWrite: false }));
+    this.selBox = new THREE.Box3Helper(new THREE.Box3(), 0x3FA9EE); this.selBox.visible = false; this.helpers.add(this.selBox);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.98, 1, 96), new THREE.MeshBasicMaterial({ color: 0x3FA9EE, transparent: true, opacity: 0.9, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; ring.visible = false; this.selRing = ring; this.helpers.add(ring);
-    this.hoverBox = new THREE.Box3Helper(new THREE.Box3(), 0xF4EEE4); this.hoverBox.material.transparent = true; this.hoverBox.material.opacity = 0.55; this.hoverBox.visible = false; this.helpers.add(this.hoverBox);
+    this.hoverBox = new THREE.Box3Helper(new THREE.Box3(), 0x7CCBFF); this.hoverBox.material.transparent = true; this.hoverBox.material.opacity = 0.55; this.hoverBox.visible = false; this.helpers.add(this.hoverBox);
     this.hovered = null;
 
     this.palette = { ...DEFAULT_MATS };
@@ -87,7 +88,7 @@ export class Engine extends EventTarget {
     this.inset += (this.insetGoal - this.inset) * 0.18;
     if (Math.abs(this.insetGoal - this.inset) < 0.5) this.inset = this.insetGoal;
     if (!force && prev === this.inset) return;
-    if (Math.abs(this.inset) < 0.5) this.camera.clearViewOffset();
+    if (Math.abs(this.inset) < 0.5) { this.camera.clearViewOffset(); this.camera.updateProjectionMatrix(); return; }
     else this.camera.setViewOffset(this.vw, this.vh, 0, this.inset, this.vw, this.vh);
     this.camera.updateProjectionMatrix();
   }
@@ -165,10 +166,10 @@ export class Engine extends EventTarget {
   setAmbiance(name, record = true) {
     this.ambiance = name;
     const A = {
-      jour: { sky: 0xE9E4DB, sun: [0xfff0dc, 2.6], dir: [6, 11, 5], hemi: 0.65, env: 0.9, exp: 1.0, lamps: 0.6 },
+      jour: { sky: 0xEEF2F6, ground: 0xD3E3EF, sun: [0xfff0dc, 2.6], dir: [6, 11, 5], hemi: 0.65, env: 0.9, exp: 1.0, lamps: 0.6 },
       doree: { sky: 0xE7C9A2, sun: [0xffb46b, 3.2], dir: [10, 3.2, 2], hemi: 0.35, env: 0.55, exp: 1.05, lamps: 0.9 },
       soir: { sky: 0x1C1A1F, sun: [0x6f86c9, 0.25], dir: [-4, 8, -3], hemi: 0.08, env: 0.12, exp: 1.15, lamps: 1.6 },
-      studio: { sky: 0xF3F2EF, sun: [0xffffff, 1.7], dir: [4, 12, 7], hemi: 0.85, env: 1.1, exp: 1.0, lamps: 0.5 },
+      studio: { sky: 0xF3F6F9, ground: 0xCFE1F0, sun: [0xffffff, 1.7], dir: [4, 12, 7], hemi: 0.85, env: 1.1, exp: 1.0, lamps: 0.5 },
       galerie: { sky: 0xDADCDE, sun: [0xf4f7ff, 1.2], dir: [0, 14, 2], hemi: 0.5, env: 0.8, exp: 1.0, lamps: 1.2 },
     }[name] || {};
     this.sun.color.set(A.sun[0]); this.sun.intensity = A.sun[1];
@@ -176,7 +177,7 @@ export class Engine extends EventTarget {
     this.hemi.intensity = A.hemi; this.scene.environmentIntensity = A.env;
     this.renderer.toneMappingExposure = A.exp;
     this.lampFactor = A.lamps;
-    this.skyColor = new THREE.Color(A.sky);
+    this.skyColor = new THREE.Color(A.sky); this.groundColor = A.ground != null ? new THREE.Color(A.ground) : null;
     this.applyBackdrop();
     this.updateLamps();
     if (record) this.commit();
@@ -190,7 +191,8 @@ export class Engine extends EventTarget {
     this.grid.visible = !cam && this.showGrid !== false;
     if (!cam) {
       // sol et ciel de la même teinte : un studio sans horizon, sans limite
-      const g = this.skyColor.clone().offsetHSL(0, 0, this.ambiance === 'soir' ? 0.02 : -0.012);
+      // sol bleu clair : les créations (souvent blanches) s'en détachent nettement
+      const g = this.groundColor ? this.groundColor.clone() : this.skyColor.clone().offsetHSL(0, 0, this.ambiance === 'soir' ? 0.02 : -0.012);
       this.ground.material.color.copy(g);
     }
   }
@@ -295,16 +297,22 @@ export class Engine extends EventTarget {
     g.traverse(o => {
       if (!o.isMesh || !ROLES.includes(o.userData.role)) return;
       const role = o.userData.role;
-      const id = g.userData.mats?.[role] || this.palette[role] || DEFAULT_MATS[role];
+      const id = g.userData.mats?.[role] || o.userData.fixedMat || this.palette[role] || DEFAULT_MATS[role];
       let m = material(id);
+      if (o.userData.look && !g.userData.mats?.[role]) { // finition demandée par Jarvis (brillant, métal, lumineux)
+        const L = o.userData.look, key = id + '|' + [L.r, L.m, L.e].join('|');
+        lookCache[key] ||= Object.assign(cloneMaterial(m), {}, L.r != null ? { roughness: L.r } : {}, L.m != null ? { metalness: L.m } : {});
+        if (L.e && !lookCache[key].emissive?.getHex()) { lookCache[key].emissive = new THREE.Color(L.e); lookCache[key].emissiveIntensity = 1.5; }
+        m = lookCache[key];
+      }
       if (o.userData.double && m.side !== THREE.DoubleSide) {
         const key = id + ':double';
-        m = material.double?.[key] || (material.double = material.double || {}, material.double[key] = Object.assign(m.clone(), { side: THREE.DoubleSide }));
+        m = material.double?.[key] || (material.double = material.double || {}, material.double[key] = Object.assign(cloneMaterial(m), { side: THREE.DoubleSide }));
       }
       o.material = m;
       if (o.userData.wallNormal) {
         // les murs ont leur propre instance pour pouvoir s'effacer (vue maison de poupée)
-        o.material = m.clone(); o.material.transparent = true; o.material.userData.fadeable = true;
+        o.material = cloneMaterial(m); o.material.transparent = true; o.material.userData.fadeable = true;
       }
     });
   }
@@ -434,8 +442,17 @@ export class Engine extends EventTarget {
 
   /* ---------- boucle ---------- */
   frame() {
-    const dt = Math.min(this.clock.getDelta(), 0.05);
+    const raw = this.clock.getDelta(), dt = Math.min(raw, 0.05);
     this.applyOffset();
+    // qualité adaptative : on baisse la résolution si l'appareil peine, on la remonte s'il a de la marge
+    const Q = this.quality ||= { t: 0, n: 0, pr: Math.min(window.devicePixelRatio, 2), max: Math.min(window.devicePixelRatio, 2) };
+    Q.t += raw; Q.n++;
+    if (Q.t > 2) {
+      const ms = Q.t / Q.n * 1000; let pr = Q.pr;
+      if (ms > 26 && pr > 1) pr = Math.max(1, pr - 0.25); else if (ms < 15 && pr < Q.max) pr = Math.min(Q.max, pr + 0.25);
+      if (pr !== Q.pr && !document.hidden) { Q.pr = pr; this.renderer.setPixelRatio(pr); this.resize(); }
+      Q.t = 0; Q.n = 0;
+    }
     this.updateCamera(dt);
     // soleil qui suit la zone de travail (ombres nettes)
     const t = this.walk ? this.camera.position : this.orbit.target;

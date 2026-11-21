@@ -24,7 +24,7 @@ export async function hostDisplay(onCode, onData, onStatus) {
   onCode(p.c);
   p.peer.on('connection', conn => {
     conn.on('open', () => onStatus('connected'));
-    conn.on('data', onData);
+    conn.on('data', d => { if (d?.t !== 'ping') onData(d); });
     conn.on('close', () => onStatus('waiting'));
   });
   p.peer.on('disconnected', () => { try { p.peer.reconnect(); } catch { } });
