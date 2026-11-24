@@ -1018,6 +1018,7 @@ function openMenu() {
     <div class="optrow"><span>Murs qui s’effacent</span><div class="seg" id="mCut"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="optrow"><span>Sons de confirmation</span><div class="seg" id="mSound"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="optrow"><span>Mode léger</span><div class="seg" id="mLite"><button data-v="auto">Auto</button><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
+    <div class="optrow"><span>Diagnostic mains</span><div class="seg" id="mDiag"><button data-v="0">Non</button><button data-v="1">Oui</button></div></div>
     <div class="optrow"><span>Grille au sol</span><div class="seg" id="mGrid"><button data-v="1">Oui</button><button data-v="0">Non</button></div></div>
     <div class="list" style="margin-top:14px">
       <button class="item" data-m="jarvis">${svg('sparkle')}<div><div class="t">Cerveau Almy</div><div class="s">${brain.key ? 'Actif. Changer de clé ou de modèle.' : 'Créer n’importe quoi à partir d’une phrase.'}</div></div></button>
@@ -1045,6 +1046,7 @@ function openMenu() {
     seg('#mCut', engine.cutaway ? 1 : 0, v => engine.cutaway = v === '1');
     seg('#mSound', soundOn ? 1 : 0, v => { soundOn = v === '1'; try { localStorage.setItem('atelier:son', v); } catch { } if (soundOn) playTick(); });
     seg('#mLite', litePref(), v => { try { localStorage.setItem('atelier:lite', v); } catch { } applyLite(); });
+    seg('#mDiag', (() => { try { return localStorage.getItem('atelier:diag') === '1' ? 1 : 0; } catch { return 0; } })(), v => { try { localStorage.setItem('atelier:diag', v); } catch { } });
     seg('#mGrid', engine.showGrid === false ? 0 : 1, v => { engine.showGrid = v === '1'; engine.applyBackdrop(); });
     root.querySelectorAll('[data-m]').forEach(b => b.onclick = () => {
       const m = b.dataset.m; closeModal();

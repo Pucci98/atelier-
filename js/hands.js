@@ -107,6 +107,11 @@ export class Hands {
       if (r?.hover) hovered = r.hover; if (r?.ui) uiHover = r.ui; if (r?.brush) brush = r.brush;
     }
     this.updateTwo();
+    if (localStorage.getItem('atelier:diag') === '1') {
+      let d = document.getElementById('handsDiag');
+      if (!d) { d = document.createElement('pre'); d.id = 'handsDiag'; d.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:60;margin:0;padding:6px 8px;font:11px/1.35 ui-monospace,monospace;color:#9FDBFF;background:rgba(3,6,12,.7);border-radius:8px;pointer-events:none;white-space:pre'; document.body.append(d); }
+      d.textContent = this.hands.map((h, i) => h.seen ? `main ${i + 1}: écart ${h.gap?.toFixed(2)} (pince <${PINCH_ON}, lâche >${PINCH_OFF}) ${h.pinched ? 'PINCÉ' : 'ouvert'} · ${h.mode}` : `main ${i + 1}: non vue`).join('\n') + `\nimages perdues: ${this.hands.map(h => h.lost).join('/')}`;
+    } else document.getElementById('handsDiag')?.remove();
     this.engine.setHover?.(hovered);
     this.setUiHover(uiHover);
     const sc = this.engine.sculptor;
@@ -125,7 +130,7 @@ export class Hands {
   update(h, lm, P, now) {
     const e = this.engine;
     const size = dist(lm[0], lm[5]) || 0.1;
-    const gap = dist(lm[4], lm[8]) / size;
+    const gap = dist(lm[4], lm[8]) / size; h.gap = gap; h.size = size;
     h.palmX = P[5].x; h.palmY = P[5].y;
 
     // pincement franc, confirmé sur 2 images, avec hystérésis
