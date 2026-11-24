@@ -218,6 +218,10 @@ export class Hands {
     h.press = { t: now, x: ref.x, y: ref.y, ui, hit, dragging: false, mode: null };
     h.mode = 'pinch';
     window.atelierTick?.(520);
+    // boutons des barres fixes : on les actionne dès le pincement (comme appuyer), sans attendre le relâchement
+    if (ui && ui.tagName !== 'INPUT' && ui.closest('#dock, #top, #selPanel, #modal, #cmd')) {
+      h.press.clicked = true; ui.click(); ui.classList.add('hand-clicked'); setTimeout(() => ui.classList.remove('hand-clicked'), 250);
+    }
   }
 
   pinchMove(h) {
@@ -262,7 +266,8 @@ export class Hands {
       else if (p.mode === 'range') p.ui.dispatchEvent(new Event('change', { bubbles: true }));
       return;
     }
-    if (now - p.t > 900) return; // pincement tenu longtemps sans bouger : on ne fait rien
+    if (p.clicked) return;
+    if (now - p.t > 1600) return; // pincement tenu très longtemps sans bouger : on ne fait rien
     // pincer-relâcher = toucher
     h.el.classList.remove('tap'); void h.el.offsetWidth; h.el.classList.add('tap');
     window.atelierTick?.(760);
