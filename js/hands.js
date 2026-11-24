@@ -204,7 +204,7 @@ export class Hands {
   }
 
   pinchStart(h, now) {
-    const e = this.engine;
+    const e = this.engine; h.pinchT0 = now;
     if (h.zoom) this.endZoom(h, now - h.zoom.t > 600); // un vrai zoom déjà avancé est gardé, sinon annulé
     // point visé juste avant de pincer (le geste de pincer fait bouger le doigt)
     const ref = h.hist.find(p => now - p.t < 160) || { x: h.x, y: h.y };
@@ -227,7 +227,8 @@ export class Hands {
       else if (p.hit) {
         if (e.selected !== p.hit.object) e.setSelection(p.hit.object, p.hit.role);
         p.mode = 'move'; p.drag = e.dragStart(e.selected, p.x, p.y);
-      } else p.mode = 'orbit';
+      } else if (now - (h.pinchT0 || 0) < 220) { p.dragging = false; return; } // pincement fantôme : pas de rotation sans geste tenu
+      else p.mode = 'orbit';
     }
     if (!p.dragging) return;
     h.mode = p.mode === 'none' || p.mode === 'range' ? 'pinch' : p.mode;

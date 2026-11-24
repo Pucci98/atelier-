@@ -24,14 +24,19 @@ export async function hostDisplay(onCode, onData, onStatus) {
   onCode(p.c);
   let current = null;
   p.peer.on('connection', conn => {
-    if (current?.open) { conn.on('open', () => conn.close()); return; } // un seul appareil peut piloter l'écran
-    current = conn;
+    if (current?.open && Date.now() - (current._last || 0) < 10000) { conn.on('open', () => conn.close()); return; }
+    try { current?.close(); } catch { } // un seul appareil peut piloter l'écran
+    current = conn; conn._last = Date.now();
     conn.on('open', () => { onStatus('connected'); try { conn.send({ t: 'need' }); } catch { } });
-    conn.on('data', d => { if (d?.t !== 'ping') onData(d); });
-    conn.on('close', () => onStatus('waiting'));
+    conn.on('data', d => { conn._last = Date.now(); if (d?.t !== 'ping') onData(d); });
+    const hb = setInterval(() => { try { conn.open ? conn.send({ t: 'ping' }) : clearInterval(hb); } catch { } }, 4000);
+    conn.on('close', () => { clearInterval(hb); onStatus('waiting'); });
   });
   hostDisplay.reply = d => { try { if (current?.open) current.send(d); } catch { } };
-  p.peer.on('disconnected', () => { try { p.peer.reconnect(); } catch { } });
+  const back = () => { if (p.peer.destroyed) return; try { if (p.peer.disconnected) p.peer.reconnect(); } catch { } };
+  p.peer.on('disconnected', () => { setTimeout(back, 1000); });
+  setInterval(back, 5000);
+  document.addEventListener('visibilitychange', back);
   return p.peer;
 }
 

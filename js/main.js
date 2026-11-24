@@ -1096,10 +1096,10 @@ async function linkConnect(c, quiet) {
     link = null; setStatus();
     if (linkManualOff) return;
     toast('Écran lié perdu, reconnexion…', 2500);
-    let n = 0; const retry = async () => { if (link || linkManualOff || ++n > 20) { if (!link && !linkManualOff) toast('Écran déconnecté'); return; } try { await linkConnect(c, true); toast('Écran reconnecté'); } catch { setTimeout(retry, 3000); } };
-    setTimeout(retry, 1200);
-  }, d => { if (d?.t === 'need') { linkAck = null; sendScene(true); } else if (d?.t === 'ack') linkAck = d.h; });
-  linkCode = c; linkManualOff = false; setStatus(); keepAwake(true); sendScene();
+    let n = 0; const retry = async () => { if (link || linkManualOff || ++n > 120) { if (!link && !linkManualOff) toast('Écran déconnecté'); return; } try { await linkConnect(c, true); toast('Écran reconnecté'); } catch { setTimeout(retry, 3000); } };
+    setTimeout(retry, Math.min(6000, 1200 + n * 300));
+  }, d => { linkRx = Date.now(); if (d?.t === 'need') { linkAck = null; sendScene(true); } else if (d?.t === 'ack') linkAck = d.h; });
+  linkRx = Date.now(); linkCode = c; linkManualOff = false; setStatus(); keepAwake(true); sendScene();
   clearInterval(linkConnect.ping); linkConnect.ping = setInterval(() => link?.send({ t: 'ping' }), 4000);
 }
 function openLink() {
@@ -1125,7 +1125,9 @@ function openLink() {
     };
   });
 }
-let linkAck = null, linkSent = null;
+let linkAck = null, linkSent = null, linkRx = Date.now();
+setInterval(() => { if (link && Date.now() - linkRx > 15000) { try { link.conn.close(); } catch { } link.conn.emit?.('close'); } }, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && link && !link.conn?.open) link.conn?.close(); });
 const hashStr = s => { let h = 0; for (let i = 0; i < s.length; i += 7) h = (h * 31 + s.charCodeAt(i)) | 0; return h + ':' + s.length; };
 function sendScene(now) {
   if (!link) return; clearTimeout(linkT);
