@@ -67,6 +67,7 @@ catch (e) {
 }
 window.atelier = engine; // pratique pour déboguer
 window.atelierDire = t => runActions(parseCommand(t)); // tester une commande vocale au clavier
+try { if (new URLSearchParams(location.search).has('diag')) localStorage.setItem('atelier:diag', '1'); } catch { }
 const isDisplay = location.hash === '#ecran' || new URLSearchParams(location.search).has('ecran');
 
 const ROLE_LABEL = { forme: 'Matière', terrain: 'Terrain', roche: 'Roche', batiment: 'Façades', toit: 'Toit', trottoir: 'Trottoirs', route: 'Route', herbe: 'Herbe', marquage: 'Marquage', sol: 'Sol', mur: 'Murs', mobilier: 'Structure', textile: 'Tissu', metal: 'Métal', verre: 'Vitrage', corps: 'Corps', vetement: 'Vêtement' };
