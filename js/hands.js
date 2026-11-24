@@ -261,6 +261,17 @@ export class Hands {
     // pincer-relâcher = toucher
     h.el.classList.remove('tap'); void h.el.offsetWidth; h.el.classList.add('tap');
     window.atelierTick?.(760);
+    // double pincement rapide : main droite = zoom avant, main gauche = zoom arrière
+    if (!p.ui) {
+      const right = (h.palmX > innerWidth / 2) === this.mirror;
+      if (this.lastTap && now - this.lastTap.t < 450 && this.lastTap.right === right) {
+        this.lastTap = null; const f = right ? 1.25 : 0.8, s = e.selected;
+        if (s) { s.scale.multiplyScalar(f); e.commit(); this.ui.showDims?.(); }
+        else { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(e.orbit.radius / f, 0.3, 4000); }
+        window.atelierTick?.(880); this.ui.toast?.(right ? 'Zoom +' : 'Zoom −'); return;
+      }
+      this.lastTap = { t: now, right };
+    }
     if (p.ui) { p.ui.click(); p.ui.classList.add('hand-clicked'); setTimeout(() => p.ui.classList.remove('hand-clicked'), 250); return; }
     if (p.hit) e.setSelection(p.hit.object, p.hit.role);
     else e.setSelection(null);
