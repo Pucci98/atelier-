@@ -311,3 +311,10 @@ body.dock-compact:not(.dock-right):not(.dock-hidden) #selPanel, body.dock-compac
 
 /* petits écrans : tout le haut doit tenir (le menu était poussé hors de l'écran) */
 @media (max-width: 430px) { #top { gap: 4px; } .brand { padding: 6px 9px 7px; } .brand .logo { font-size: 16px; } .brand .mark { width: 18px; height: 18px; margin-right: 5px; } .ico { width: 30px; height: 32px; flex-basis: 30px; } .actions { gap: 0; padding-left: 3px; padding-right: 3px; } }
+
+/* paysage : la barre de côté démarre sous l'en-tête, rien ne la recouvre */
+@media (max-height: 500px) {
+  #dock { top: 54px; bottom: 8px; max-height: none; transform: none; }
+  #selPanel, #sheet, #cmd { left: calc(var(--sal) + 64px); }
+  body.dock-right #selPanel, body.dock-right #sheet, body.dock-right #cmd { left: 8px; right: calc(var(--sar) + 64px); }
+}

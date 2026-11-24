@@ -287,11 +287,12 @@ export class Hands {
   checkClap(now) {
     const [a, b] = this.hands, e = this.engine;
     if (!(a.seen && b.seen) || a.pinched || b.pinched) { this.dh = []; return; }
-    const d = Math.hypot(a.palmX - b.palmX, a.palmY - b.palmY), ref = Math.min(innerWidth, innerHeight);
+    if ((a.gap || 0) < 0.55 || (b.gap || 0) < 0.55) { this.dh = []; return; } // deux mains bien ouvertes seulement
+    const d = Math.hypot(a.palmX - b.palmX, a.palmY - b.palmY), ref = innerWidth;
     (this.dh ||= []).push({ t: now, d }); while (this.dh.length && now - this.dh[0].t > 450) this.dh.shift();
     const far = Math.max(...this.dh.map(x => x.d));
     // un vrai clap : les mains étaient franchement écartées il y a un instant et se rejoignent vite
-    if (d < ref * 0.16 && far > ref * 0.6 && now - (this.clapT || 0) > 1500) {
+    if (d < ref * 0.16 && far > ref * 0.5 && now - (this.clapT || 0) > 1500) {
       this.clapT = now; this.dh = []; e.setSelection(null); window.atelierTick?.(520); this.ui.toast?.('👏 Tout lâché');
     }
   }
