@@ -26,16 +26,17 @@ export async function hostDisplay(onCode, onData, onStatus) {
   p.peer.on('connection', conn => {
     if (current?.open) { conn.on('open', () => conn.close()); return; } // un seul appareil peut piloter l'écran
     current = conn;
-    conn.on('open', () => onStatus('connected'));
+    conn.on('open', () => { onStatus('connected'); try { conn.send({ t: 'need' }); } catch { } });
     conn.on('data', d => { if (d?.t !== 'ping') onData(d); });
     conn.on('close', () => onStatus('waiting'));
   });
+  hostDisplay.reply = d => { try { if (current?.open) current.send(d); } catch { } };
   p.peer.on('disconnected', () => { try { p.peer.reconnect(); } catch { } });
   return p.peer;
 }
 
 // Côté création : se connecte à l'écran dont on a tapé le code
-export async function connectTo(c, onStatus) {
+export async function connectTo(c, onStatus, onData) {
   const Peer = await waitPeer();
   const peer = new Peer(undefined, { debug: 0 });
   await new Promise((res, rej) => { peer.on('open', res); peer.on('error', rej); });
@@ -46,5 +47,6 @@ export async function connectTo(c, onStatus) {
     peer.on('error', e => { clearTimeout(to); rej(e.type === 'peer-unavailable' ? new Error('Écran introuvable. Vérifie le code.') : e); });
   });
   conn.on('close', () => onStatus('closed'));
+  conn.on('data', d => onData?.(d));
   return { peer, conn, send: d => { if (conn.open) conn.send(d); } };
 }

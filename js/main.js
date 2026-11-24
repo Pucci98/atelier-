@@ -1098,7 +1098,7 @@ async function linkConnect(c, quiet) {
     toast('Écran lié perdu, reconnexion…', 2500);
     let n = 0; const retry = async () => { if (link || linkManualOff || ++n > 20) { if (!link && !linkManualOff) toast('Écran déconnecté'); return; } try { await linkConnect(c, true); toast('Écran reconnecté'); } catch { setTimeout(retry, 3000); } };
     setTimeout(retry, 1200);
-  });
+  }, d => { if (d?.t === 'need') { linkAck = null; sendScene(true); } else if (d?.t === 'ack') linkAck = d.h; });
   linkCode = c; linkManualOff = false; setStatus(); keepAwake(true); sendScene();
   clearInterval(linkConnect.ping); linkConnect.ping = setInterval(() => link?.send({ t: 'ping' }), 4000);
 }
@@ -1125,7 +1125,14 @@ function openLink() {
     };
   });
 }
-function sendScene() { if (!link) return; clearTimeout(linkT); linkT = setTimeout(() => link?.send({ t: 'scene', data: engine.serialize() }), 120); }
+let linkAck = null, linkSent = null;
+const hashStr = s => { let h = 0; for (let i = 0; i < s.length; i += 7) h = (h * 31 + s.charCodeAt(i)) | 0; return h + ':' + s.length; };
+function sendScene(now) {
+  if (!link) return; clearTimeout(linkT);
+  linkT = setTimeout(() => { const data = engine.serialize(); const h = hashStr(JSON.stringify(data)); linkSent = h; link?.send({ t: 'scene', data, h }); }, now ? 0 : 120);
+}
+// filet de sécurité : tant que l'écran n'a pas confirmé la dernière scène, on la renvoie
+setInterval(() => { if (link && linkSent && linkAck !== linkSent) sendScene(true); }, 2500);
 engine.addEventListener('frame', () => {
   if (!link) return;
   const now = performance.now();
@@ -1210,11 +1217,13 @@ async function startDisplay() {
     } else baseUpdate(dt);
   };
   try {
-    await hostDisplay(c => $('#displayCode').textContent = c, msg => {
-      if (msg.t === 'scene') { let d; try { d = sanitize(msg.data); } catch { return; } engine.load(d, { record: false, keepCamera: true }); engine.setSelection(null); $('#displayWait').hidden = true; $('#displayLive').hidden = false; }
+    const onMsg = msg => {
+      if (msg.t === 'scene') { let d; try { d = sanitize(msg.data); } catch { return; } engine.load(d, { record: false, keepCamera: true }); engine.setSelection(null); if (typeof msg.h === 'string') hostDisplay.reply?.({ t: 'ack', h: msg.h.slice(0, 40) }); $('#displayWait').hidden = true; $('#displayLive').hidden = false; }
       else if (msg.t === 'cam' && Array.isArray(msg.p) && Array.isArray(msg.q)) remote = { p: msg.p.map(Number), q: msg.q.map(Number), fov: Math.min(120, Math.max(20, +msg.fov || 50)) };
-      else if (msg.t === 'xf') { const g = engine.content.children.find(x => x.userData.id === msg.id); if (g) { g.position.fromArray(msg.p); g.rotation.y = msg.r; g.scale.fromArray(msg.s); } }
-    }, st => { if (st === 'waiting') { $('#displayWait').hidden = false; $('#displayLive').hidden = true; } });
+      else if (msg.t === 'xf') { const g = engine.content.children.find(x => x.userData.id === msg.id); if (!g && performance.now() - (onMsg.need || 0) > 2500) { onMsg.need = performance.now(); hostDisplay.reply?.({ t: 'need' }); } if (g) { g.position.fromArray(msg.p); g.rotation.y = msg.r; g.scale.fromArray(msg.s); } }
+    };
+    window.atelierDisplayMsg = onMsg;
+    await hostDisplay(c => $('#displayCode').textContent = c, onMsg, st => { if (st === 'waiting') { $('#displayWait').hidden = false; $('#displayLive').hidden = true; } });
   } catch (e) { $('#displayCode').textContent = '—'; $('#displayWait').querySelector('.muted').textContent = 'Connexion au service de liaison impossible : ' + (e.message || e) + '. Recharge la page.'; }
 }
 
