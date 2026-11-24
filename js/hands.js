@@ -286,11 +286,13 @@ export class Hands {
   // applaudissement : les deux mains ouvertes se rejoignent → tout lâcher
   checkClap(now) {
     const [a, b] = this.hands, e = this.engine;
-    if (!(a.seen && b.seen) || a.pinched || b.pinched) { this.apart = 0; return; }
+    if (!(a.seen && b.seen) || a.pinched || b.pinched) { this.dh = []; return; }
     const d = Math.hypot(a.palmX - b.palmX, a.palmY - b.palmY), ref = Math.min(innerWidth, innerHeight);
-    if (d > ref * 0.42) { this.apart = this.apart || now; return; }
-    if (this.apart && now - this.apart > 250 && d < ref * 0.2 && now - (this.clapT || 0) > 1200) {
-      this.clapT = now; this.apart = 0; e.setSelection(null); window.atelierTick?.(520); this.ui.toast?.('👏 Tout lâché');
+    (this.dh ||= []).push({ t: now, d }); while (this.dh.length && now - this.dh[0].t > 450) this.dh.shift();
+    const far = Math.max(...this.dh.map(x => x.d));
+    // un vrai clap : les mains étaient franchement écartées il y a un instant et se rejoignent vite
+    if (d < ref * 0.16 && far > ref * 0.6 && now - (this.clapT || 0) > 1500) {
+      this.clapT = now; this.dh = []; e.setSelection(null); window.atelierTick?.(520); this.ui.toast?.('👏 Tout lâché');
     }
   }
   updateTwo() {
