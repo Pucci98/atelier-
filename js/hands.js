@@ -15,7 +15,7 @@ import * as THREE from 'three';
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8]]; // pouce et index seulement
 const LABEL = { zoom: 'Zoom', scale: 'Taille', orbit: 'Rotation', move: 'Déplacer', sculpt: 'Modeler', two: 'Deux mains', twoscale: 'Taille', pinch: '' };
-const PINCH_ON = 0.3, PINCH_OFF = 0.55;   // écart pouce-index / taille de la main : fermé / rouvert (marqué, avec hystérésis)
+const PINCH_ON = 0.42, PINCH_OFF = 0.7;   // écart pouce-index / taille de la main : fermé / rouvert (marqué, avec hystérésis)
 const DRAG = 26;                          // px de déplacement avant que le pincement devienne un glisser
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z - b.z) * 0.5);
@@ -319,9 +319,10 @@ export class Hands {
   }
 
   uiTarget(x, y) {
-    const el = document.elementFromPoint(x, y);
-    if (!el || el.tagName === 'CANVAS') return null;
-    return el.closest('button, a, [data-hand], .card, .chip, summary, input[type=range]');
+    const SEL = 'button, a, [data-hand], .card, .chip, summary, input[type=range]';
+    const at = (px, py) => { const el = document.elementFromPoint(px, py); return !el || el.tagName === 'CANVAS' ? null : el.closest(SEL); };
+    // marge de visée : les boutons sont petits et la main tremble, on prend le plus proche dans ~26 px
+    return at(x, y) || [[0, 0]].concat([0, 1, 2, 3, 4, 5, 6, 7].map(i => [Math.cos(i * Math.PI / 4) * 26, Math.sin(i * Math.PI / 4) * 26])).slice(1).map(([dx, dy]) => at(x + dx, y + dy)).find(Boolean) || null;
   }
   setUiHover(t) {
     if (this._hov && this._hov !== t) this._hov.classList.remove('hand-hover');
