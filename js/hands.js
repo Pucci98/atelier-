@@ -222,7 +222,7 @@ export class Hands {
     if (!p.dragging && moved > DRAG) {
       p.dragging = true; p.lx = h.x; p.ly = h.y;
       if (p.ui?.type === 'range') p.mode = 'range';
-      else if (p.ui) p.mode = 'none';
+      else if (p.ui) p.mode = p.ui.closest('#dock, #sheet, #inspector') ? 'scroll' : 'none';
       else if (e.sculptor.active && e.selected && e.sculptor.begin(e.selected, p.x, p.y)) p.mode = 'sculpt';
       else if (p.hit) {
         if (e.selected !== p.hit.object) e.setSelection(p.hit.object, p.hit.role);
@@ -231,12 +231,13 @@ export class Hands {
       else p.mode = 'orbit';
     }
     if (!p.dragging) return;
-    h.mode = p.mode === 'none' || p.mode === 'range' ? 'pinch' : p.mode;
+    h.mode = p.mode === 'none' || p.mode === 'range' || p.mode === 'scroll' ? 'pinch' : p.mode;
     if (p.mode === 'move' && p.drag) {
       if (e.dragMove(p.drag, h.x, h.y)) p.moved = true;
     } else if (p.mode === 'orbit') {
       e.orbitBy((h.x - p.lx) * 0.008, (h.y - p.ly) * 0.007);
     } else if (p.mode === 'sculpt') e.sculptor.move(h.x, h.y);
+    else if (p.mode === 'scroll') { const sc = p.ui.closest('#dock, #sheet, #inspector'); const horiz = sc.id === 'sheet' && sc.scrollWidth > sc.clientWidth + 4; if (horiz) sc.scrollLeft -= h.x - p.lx; else sc.scrollTop -= h.y - p.ly; p.moved = true; }
     else if (p.mode === 'range') {
       const r = p.ui.getBoundingClientRect(); const t = Math.max(0, Math.min(1, (h.x - r.left) / r.width));
       p.ui.value = +p.ui.min + (+p.ui.max - +p.ui.min) * t; p.ui.dispatchEvent(new Event('input', { bubbles: true }));
@@ -266,8 +267,19 @@ export class Hands {
   }
 
   // deux mains qui pincent en même temps : taille / zoom et rotation
+  // applaudissement : les deux mains ouvertes se rejoignent → tout lâcher
+  checkClap(now) {
+    const [a, b] = this.hands, e = this.engine;
+    if (!(a.seen && b.seen) || a.pinched || b.pinched) { this.apart = 0; return; }
+    const d = Math.hypot(a.palmX - b.palmX, a.palmY - b.palmY), ref = Math.min(innerWidth, innerHeight);
+    if (d > ref * 0.42) { this.apart = this.apart || now; return; }
+    if (this.apart && now - this.apart > 250 && d < ref * 0.2 && now - (this.clapT || 0) > 1200) {
+      this.clapT = now; this.apart = 0; e.setSelection(null); window.atelierTick?.(520); this.ui.toast?.('👏 Tout lâché');
+    }
+  }
   updateTwo() {
     const [a, b] = this.hands, e = this.engine;
+    this.checkClap(performance.now());
     const both = a.seen && b.seen && a.pinched && b.pinched && a.press && b.press && !a.press.ui && !b.press.ui;
     if (both && !this.two) {
       this.two = { d: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x), obj: e.sculptor.active ? null : e.selected, radius: e.orbit.radius, az: e.orbit.az };

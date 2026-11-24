@@ -424,6 +424,7 @@ $('#mdApply').onclick = () => { if (!engine.selected) { toast('Touche d’abord 
 
 /* ---------- panneau de sélection ---------- */
 const ui = {
+  toast: (m) => toast(m, 1500),
   showDims() {
     const s = engine.selected; if (!s) return;
     const d = engine.dims(s); const f = v => v >= 1 ? v.toFixed(2).replace('.', ',') + ' m' : Math.round(v * 100) + ' cm';

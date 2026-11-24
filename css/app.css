@@ -302,3 +302,9 @@ body.dock-compact:not(.dock-right):not(.dock-hidden) #selPanel, body.dock-compac
 @keyframes sg-name { 0%, 70% { opacity: 0 } 85%, 100% { opacity: 1 } }
 @keyframes sg-out { 0%, 94% { opacity: 1 } 100% { opacity: 0 } }
 @media (prefers-reduced-motion: reduce) { #splash, #splash * { animation-duration: 2.4s !important; } }
+
+/* côté : défilement au pouce, même en paysage (toutes les options restent accessibles) */
+#dock { max-height: calc(100dvh - 120px - var(--sab, 0px)); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; scrollbar-width: none; scroll-snap-type: y proximity; }
+#dock::-webkit-scrollbar { display: none; }
+.dk { flex: none; scroll-snap-align: center; touch-action: pan-y; }
+@media (max-height: 500px) { #dock { max-height: calc(100dvh - 64px); top: calc(50% + 24px); } .dk { width: 44px; height: 44px; } }
