@@ -15,6 +15,13 @@ import * as THREE from 'three';
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8]]; // pouce et index seulement
 const LABEL = { zoom: 'Zoom', scale: 'Taille', orbit: 'Rotation', move: 'Déplacer', sculpt: 'Modeler', two: 'Deux mains', twoscale: 'Taille', pinch: '' };
+function scrollerOf(el) {
+  for (let n = el; n && n !== document.body; n = n.parentElement) {
+    const cs = getComputedStyle(n);
+    if ((/(auto|scroll)/.test(cs.overflowX) && n.scrollWidth > n.clientWidth + 2) || (/(auto|scroll)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 2)) return n;
+  }
+  return null;
+}
 const PINCH_ON = 0.42, PINCH_OFF = 0.7;   // écart pouce-index / taille de la main : fermé / rouvert (marqué, avec hystérésis)
 const DRAG = 26;                          // px de déplacement avant que le pincement devienne un glisser
 
@@ -246,7 +253,9 @@ export class Hands {
     } else if (p.mode === 'orbit') {
       e.orbitBy((h.x - p.lx) * 0.008, (h.y - p.ly) * 0.007);
     } else if (p.mode === 'sculpt') e.sculptor.move(h.x, h.y);
-    else if (p.mode === 'scroll') { const sc = p.ui.closest('#dock, #sheet, #inspector'); const horiz = sc.id === 'sheet' && sc.scrollWidth > sc.clientWidth + 4; if (horiz) sc.scrollLeft -= h.x - p.lx; else sc.scrollTop -= h.y - p.ly; p.moved = true; }
+    else if (p.mode === 'scroll') {
+      const sc = p.scroller || (p.scroller = scrollerOf(p.ui)); if (sc) { const dx = h.x - p.lx, dy = h.y - p.ly; if (sc.scrollWidth > sc.clientWidth + 2 && Math.abs(dx) >= Math.abs(dy) * 0.6) sc.scrollLeft -= dx; if (sc.scrollHeight > sc.clientHeight + 2) sc.scrollTop -= dy; } p.moved = true;
+    }
     else if (p.mode === 'range') {
       const r = p.ui.getBoundingClientRect(); const t = Math.max(0, Math.min(1, (h.x - r.left) / r.width));
       p.ui.value = +p.ui.min + (+p.ui.max - +p.ui.min) * t; p.ui.dispatchEvent(new Event('input', { bubbles: true }));
@@ -274,11 +283,11 @@ export class Hands {
     // double pincement rapide : main droite = zoom avant, main gauche = zoom arrière
     if (!p.ui) {
       const right = (h.palmX > innerWidth / 2) === this.mirror;
-      if (this.lastTap && now - this.lastTap.t < 450 && this.lastTap.right === right) {
-        this.lastTap = null; const f = right ? 1.25 : 0.8, s = e.selected;
+      if (this.lastTap && now - this.lastTap.t < 900) {
+        const R = this.lastTap.right; this.lastTap = null; const f = R ? 1.25 : 0.8, s = e.selected;
         if (s) { s.scale.multiplyScalar(f); e.commit(); this.ui.showDims?.(); }
         else { e.orbit.goal = null; e.orbit.radius = THREE.MathUtils.clamp(e.orbit.radius / f, 0.3, 4000); }
-        window.atelierTick?.(880); this.ui.toast?.(right ? 'Zoom +' : 'Zoom −'); return;
+        window.atelierTick?.(880); this.ui.toast?.(R ? 'Zoom +' : 'Zoom −'); return;
       }
       this.lastTap = { t: now, right };
     }
