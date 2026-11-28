@@ -417,7 +417,7 @@ export class Engine extends EventTarget {
       const m = h.object.material; if (m?.userData?.fadeable && m.opacity < 0.5) continue;
       let o = h.object; while (o.parent && o.parent !== this.content) o = o.parent;
       if (!o.visible || this.layerOf(o).locked) continue; // calque masqué ou verrouillé
-      return { object: o, role: h.object.userData.role || null, point: h.point };
+      return { object: o, role: h.object.userData.role || null, point: h.point, normal: h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : null };
     }
     return null;
   }

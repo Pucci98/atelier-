@@ -156,21 +156,21 @@ body.walking #top, body.walking #sheet, body.walking #selPanel { display: none; 
 .optrow span { font-size: 14px; }
 
 /* ---------- curseurs main ---------- */
-.hand-cursor { position: fixed; left: -22px; top: -22px; width: 44px; height: 44px; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .2s; --dwell: 0; }
+.hand-cursor { position: fixed; left: -22px; top: -22px; width: 44px; height: 44px; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .2s; --k: 0; }
 .hand-cursor.on { opacity: 1; }
-.hand-cursor svg { width: 44px; height: 44px; overflow: visible; transition: transform .12s; }
+.hand-cursor svg { width: 44px; height: 44px; overflow: visible; transition: transform .12s; transform: scale(calc(1 - var(--k) * .25)); }
 .hand-cursor .ring { fill: none; stroke: rgba(238,244,250,.95); stroke-width: 2.5; filter: drop-shadow(0 0 8px rgba(93,183,240,.7)); }
-.hand-cursor .dwell { fill: none; stroke: var(--brass-2); stroke-width: 4; stroke-linecap: round; stroke-dasharray: calc(var(--dwell) * 100) 100; transform: rotate(-90deg); transform-origin: 22px 22px; }
-.hand-cursor::after { content: ''; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: var(--ink); }
-.hand-cursor.over-obj svg, .hand-cursor.over-ui svg { transform: scale(1.2); }
+.hand-cursor .core { fill: var(--ink); transform-origin: 22px 22px; transform: scale(calc(.6 + var(--k) * 1.4)); transition: transform .08s; }
+.hand-cursor.over-obj svg, .hand-cursor.over-ui svg { transform: scale(calc(1.2 - var(--k) * .3)); }
 .hand-cursor.over-ui .ring { stroke-dasharray: 4 4; }
 .hand-cursor.tap svg { animation: htap .35s ease; }
-@keyframes htap { 0% { transform: scale(1.45); } 100% { transform: scale(1); } }
-.hand-cursor[data-mode=zoom] .ring { stroke-dasharray: 2 5; }
+@keyframes htap { 0% { transform: scale(.7); } 60% { transform: scale(1.35); } 100% { transform: scale(1); } }
 .hand-cursor[data-mode=orbit] svg { transform: scale(1.5); opacity: .7; }
+.hand-cursor[data-mode=scroll] .ring { stroke-dasharray: 3 6; }
 .hand-cursor[data-mode=move] .ring, .hand-cursor[data-mode=sculpt] .ring { stroke: var(--brass); stroke-width: 4; }
-.hand-cursor.pinch .ring { stroke: var(--brass-2); stroke-width: 5; fill: rgba(93,183,240,.25); }
-.hand-cursor.pinch svg { transform: scale(.8); }
+.hand-cursor.pinch .ring { stroke: #ffc46b; stroke-width: 5; fill: rgba(255,196,107,.18); }
+.hand-cursor.pinch .core { fill: #ffc46b; }
+#handsDiag { position: fixed; left: 8px; bottom: 8px; z-index: 60; margin: 0; padding: 6px 8px; font: 11px/1.35 ui-monospace, monospace; color: #9FDBFF; background: rgba(3,6,12,.72); border-radius: 8px; pointer-events: none; white-space: pre; }
 .hc-label { position: absolute; left: 50%; top: 52px; transform: translateX(-50%); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink); background: rgba(20,19,17,.7); padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
 .hc-label:empty { display: none; }
 .hand-hover { outline: 2px solid var(--brass-2) !important; outline-offset: 2px; }

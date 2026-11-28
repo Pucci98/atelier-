@@ -186,13 +186,14 @@ function sessionStorageGet(k) { try { return sessionStorage.getItem('atelier:' +
 function sessionStorageSet(k, v) { try { sessionStorage.setItem('atelier:' + k, v); } catch { } }
 function showHandsHelp() {
   openModal(`<h2>Créer avec les mains</h2>
-    <p>Pose l’iPhone debout, à environ 50 cm, caméra face à toi. <b>Seuls le pouce et l’index comptent</b> : les autres doigts peuvent faire ce qu’ils veulent. Tes deux mains sont suivies séparément.</p>
+    <p>Pose ton appareil debout, à environ 50 cm, caméra face à toi. <b>Seuls le pouce et l’index comptent</b> : les autres doigts peuvent faire ce qu’ils veulent. Tes deux mains sont suivies séparément.</p>
     <ul>
-      <li><b>Viser</b> : le curseur suit le bout de ton index, l’objet visé s’éclaire avec son nom.</li>
-      <li><b>Toucher</b> : pince pouce + index, puis relâche. Ça sélectionne l’objet, ça clique le bouton, et dans le vide ça désélectionne.</li>
-      <li><b>Glisser</b> : pince, bouge, relâche. Sur un objet, tu le déplaces. Dans le vide, tu tournes la vue.</li>
-      <li><b>Zoomer</b> : sans pincer, écarte ou rapproche pouce et index comme sur un téléphone. Si un objet est sélectionné, c’est lui qui change de taille.</li>
+      <li><b>Viser</b> : le curseur suit le bout de ton index, un anneau se pose sur l’objet visé. Plus tes doigts se rapprochent, plus le curseur se resserre.</li>
+      <li><b>Toucher</b> : pince pouce + index, puis relâche. Ça sélectionne l’objet, ça appuie sur le bouton, et dans le vide ça désélectionne.</li>
+      <li><b>Glisser</b> : pince, bouge, relâche. Sur un objet, tu le déplaces. Dans le vide, tu tournes la vue. Sur une liste (matières, menu), elle défile.</li>
+      <li><b>Zoomer</b> : deux pincements rapides au même endroit. Main droite = zoom avant, main gauche = zoom arrière. Si un objet est sélectionné, c’est lui qui grandit ou rétrécit.</li>
       <li><b>Deux mains</b> : pince des deux mains et écarte-les pour agrandir, tourne-les pour faire pivoter.</li>
+      <li><b>Applaudir</b> : tape dans tes mains pour tout lâcher.</li>
       <li><b>Modeler</b> : en mode Modeler, pince sur la matière et glisse.</li>
     </ul>
     <div class="row"><button class="btn" data-close>C’est parti</button></div>`);
@@ -694,7 +695,7 @@ const label = $('#objLabel'); let labelBox = null, labelFor = null, labelN = 0;
 engine.addEventListener('frame', () => {
   const g = engine.hovered || engine.selected;
   if (!g || engine.walk || isDisplay || !g.parent) { label.hidden = true; labelFor = null; return; }
-  if (g !== labelFor || ++labelN % 12 === 0) { labelBox = new THREE.Box3().setFromObject(g); labelFor = g; label.querySelector('b').textContent = nameOf(g); label.querySelector('span').textContent = g === engine.selected ? '' : 'pointer pour choisir'; }
+  if (g !== labelFor || ++labelN % 12 === 0) { labelBox = new THREE.Box3().setFromObject(g); labelFor = g; label.querySelector('b').textContent = nameOf(g); label.querySelector('span').textContent = g === engine.selected ? '' : (hands?.active ? 'pincer pour choisir' : 'toucher pour choisir'); }
   const c = labelBox.getCenter(new THREE.Vector3()); c.y = labelBox.max.y;
   c.project(engine.camera);
   if (c.z > 1) { label.hidden = true; return; }
@@ -1071,7 +1072,7 @@ async function setBackdrop(v) {
 function showHelp() {
   openModal(`<h2>Mode d’emploi</h2>
     <h3>Au doigt</h3><ul><li><b>Touche</b> un élément pour le sélectionner, puis <b>glisse-le</b> pour le déplacer.</li><li><b>Deux doigts</b> sur un élément sélectionné : agrandir et pivoter. Sans sélection : zoomer et déplacer la vue.</li><li><b>Un doigt dans le vide</b> : tourner autour de la scène.</li><li>Touche une <b>partie</b> précise (le tissu d’un canapé, le sol d’une pièce) pour lui donner une matière.</li></ul>
-    <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : pouce et index uniquement. Viser avec l’index, pincer-relâcher pour toucher, pincer-glisser pour déplacer ou tourner la vue, écarter pouce et index pour zoomer, deux mains qui pincent pour la taille et la rotation.</li>
+    <h3>Aux mains</h3><ul><li>Bouton ${svg('hand').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} : pouce et index uniquement. Viser avec l’index, pincer-relâcher pour toucher, pincer-glisser pour déplacer, tourner la vue ou faire défiler une liste, double pincement pour zoomer (main droite = avant, gauche = arrière), deux mains qui pincent pour la taille et la rotation, applaudir pour tout lâcher.</li>
       <li><b>Modeler</b> : sélectionne une forme d’argile, un rocher ou un terrain, puis <b>Modeler</b>. Glisse le doigt sur la matière : gonfler, creuser, étirer, lisser, aplatir, pincer, avec symétrie.</li></ul>
     <h3>À la voix</h3><ul><li>« Crée une pièce de 6 sur 4 », « ajoute un canapé », « en velours vert », « le sol en marbre noir »</li><li>« Plus grand », « tourne », « duplique », « supprime », « annule »</li><li>« Ambiance soir », « style Riviera », « propose-moi quelque chose », « visite »</li></ul>
     <h3>Écran lié</h3><p>Sur l’ordi, ouvre l’adresse d’ALMYGO suivie de <span class="kbd">#ecran</span>. Un code s’affiche : tape-le dans ${svg('screen').replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px;stroke:#E2C48E;fill:none;stroke-width:1.6"')} sur l’iPhone. Tout ce que tu crées s’affiche en direct.</p>
@@ -1171,7 +1172,7 @@ $('#btnMenu').onclick = openMenu;
 /* ---------- démarrage ---------- */
 const GUIDE = [
   ['Parle ou écris', 'Touche le micro et dis : « ajoute un arbre », « mets-le en rouge », « plus grand », « annule ». Ou tape dans la barre Almy.'],
-  ['À la main', 'Active la caméra : pince pouce + index pour attraper et déplacer, écarte-les pour zoomer. Une seule main suffit.'],
+  ['À la main', 'Active la caméra : pince pouce + index pour attraper et déplacer, double pincement pour zoomer (droite = avant, gauche = arrière). Une seule main suffit.'],
   ['Au doigt', 'Touche un objet pour le choisir, glisse pour le déplacer, deux doigts pour zoomer. Le ✓ « Modeler » transforme l’argile.'],
   ['Tout le reste', 'Matières, styles, lumière et calques sont dans la barre sur le côté. Exporter, sauvegarder : en haut. Rien ne te gêne : tu peux la ranger.'],
 ];
